@@ -15,7 +15,6 @@ compile_commands.json
 .DS_Store
 
 # Editors
-.vscode/
 .zed/
 .idea/
 *.swp
