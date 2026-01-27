@@ -11,12 +11,10 @@ int main() {
 
     std::string firstWindowName = "PD1";
     pd::ProjectileDetector pd1(firstWindowName, videoStream);
-
-    const int64 startTime = cv::getTickCount();
-
-    pd1.setDebug(false);
+    pd1.setDebug(true);
 
     int frames_processed = 0;
+    const int64 startTime = cv::getTickCount();
     std::vector<pd::Projectile> projectileLabels;
 
     while (true) {
@@ -25,9 +23,9 @@ int main() {
         }
 
         frames_processed++;
-        // if (cv::waitKey(1) == 'q') {
-        //     break;
-        // }
+        if (cv::waitKey(1) == 'q') {
+            break;
+        }
     }
 
     const int64 endTime = cv::getTickCount();
