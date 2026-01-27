@@ -1,4 +1,4 @@
-#include "ProjectileDetector.h"
+#include "projectiledetector.h"
 #include <iostream>
 #include <opencv2/opencv.hpp>
 
@@ -13,7 +13,7 @@ int main() {
     pd::ProjectileDetector pd1(firstWindowName, videoStream);
     pd1.setDebug(true);
 
-    int frames_processed = 0;
+    int framesProcessed = 0;
     const int64 startTime = cv::getTickCount();
     std::vector<pd::Projectile> projectileLabels;
 
@@ -22,7 +22,7 @@ int main() {
             break;
         }
 
-        frames_processed++;
+        framesProcessed++;
         if (cv::waitKey(1) == 'q') {
             break;
         }
@@ -31,7 +31,7 @@ int main() {
     const int64 endTime = cv::getTickCount();
     const double secondsElapsed = static_cast<double>(endTime - startTime) / cv::getTickFrequency();
 
-    std::cout << frames_processed << " frames processed" << std::endl;
+    std::cout << framesProcessed << " frames processed" << std::endl;
     std::cout << secondsElapsed << std::endl;
 
     videoStream.release();
