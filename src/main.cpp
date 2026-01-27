@@ -1,7 +1,7 @@
+#include "position.h"
 #include "projectiledetector.h"
 #include <iostream>
 #include <opencv2/opencv.hpp>
-#include "position.h"
 
 int main() {
     testPosition();

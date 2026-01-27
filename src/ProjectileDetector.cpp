@@ -1,4 +1,4 @@
-#include "ProjectileDetector.h"
+#include "projectiledetector.h"
 
 namespace pd {
 
