@@ -29,7 +29,7 @@ double findXRatio(int pixel) {
 
 //the difference in math is due to flipping the axis direction of y 
 double findYRatio(int pixel) {
-    return (std::tan(camAngleY / 2) * (1 + ( - 2 * pixel - 1) / camResolutionY));
+    return (std::tan(camAngleY / 2) * (camResolutionY - 2 * pixel - 1) / camResolutionY);
 }
 
 //look in lucas' atpet notebook if you need to understand this
