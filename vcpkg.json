@@ -1,0 +1,7 @@
+{
+    "name": "projectile-defense",
+    "version": "0.0.1",
+    "dependencies": [
+        "opencv4"
+    ]
+}
