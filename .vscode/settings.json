@@ -1,4 +1,35 @@
 {
+    // Breadcrumb settings
+    "breadcrumbs.enabled": false,
+    // Workbench settings
+    "workbench.iconTheme": "charmed-icons",
+    "workbench.colorTheme": "Tokyo Night Storm",
+    "workbench.startupEditor": "none",
+    "workbench.tips.enabled": false,
+    "workbench.editor.showTabs": "single",
+    "workbench.sideBar.location": "left",
+    "workbench.tree.enableStickyScroll": false,
+    "workbench.tree.renderIndentGuides": "none",
+    "workbench.tree.indent": 16,
+    // Explorer settings
+    "explorer.compactFolders": false,
+    "explorer.confirmDragAndDrop": false,
+    // Pythong linting settings
+    "python.analysis.typeCheckingMode": "strict",
+    // C++ Formatting settings
+    "C_Cpp.default.compilerPath": "/usr/bin/clang++",
+    "C_Cpp.formatting": "clangFormat",
+    // Editor settings
+    "editor.cursorSmoothCaretAnimation": "on",
+    "editor.minimap.enabled": false,
+    "editor.lineNumbers": "on",
+    "editor.formatOnSave": true,
+    "editor.fontSize": 20,
+    // Debug settings
+    "lldb.showDisassembly": "never",
+    "debug.disassemblyView.showSourceCode": false,
+    // CMake Tools settings
+    "cmake.allowCommentsInPresetsFile": true,
     "cmake.debugConfig": {
         "name": "Debug (CMake Tools)",
         "type": "lldb",
@@ -13,7 +44,4 @@
     "cmake.environment": {
         "PATH": "/opt/homebrew/bin:${env:PATH}"
     },
-    // Debug settings
-    "lldb.showDisassembly": "never",
-    "debug.disassemblyView.showSourceCode": false,
 }
