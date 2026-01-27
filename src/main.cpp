@@ -14,7 +14,7 @@ int main() {
 
     const int64 startTime = cv::getTickCount();
 
-    pd1.setDebug(true);
+    pd1.setDebug(false);
 
     int frames_processed = 0;
     std::vector<pd::Projectile> projectileLabels;
@@ -25,9 +25,9 @@ int main() {
         }
 
         frames_processed++;
-        if (cv::waitKey(1) == 'q') {
-            break;
-        }
+        // if (cv::waitKey(1) == 'q') {
+        //     break;
+        // }
     }
 
     const int64 endTime = cv::getTickCount();
