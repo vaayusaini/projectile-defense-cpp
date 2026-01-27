@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(projectile-defense MACOSX_BUNDLE
     src/main.cpp
-    src/ProjectileDetector.cpp
-    src/ProjectileDetector.h
+    src/projectiledetector.cpp
+    src/projectiledetector.h
     src/position.cpp
     src/position.h)
 
