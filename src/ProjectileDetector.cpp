@@ -27,7 +27,7 @@ void drawProjectilesOnImage(cv::Mat &image, const std::vector<Projectile> &proje
 ProjectileDetector::ProjectileDetector(std::string name, cv::VideoCapture &videoStream, DetectorConfig config)
     : _name(name), _videoStream(videoStream) {
     if (!_videoStream.isOpened()) {
-        throw std::runtime_error("ProjectileProcessor: video stream not opened");
+        throw std::runtime_error("ProjectileDetector: video stream not opened");
     }
     applyConfig(config);
 }
