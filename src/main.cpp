@@ -1,6 +1,6 @@
-#include "projectiledetector.h"
 #include <iostream>
 #include <opencv2/opencv.hpp>
+#include "projectiledetector.h"
 
 int main() {
 
