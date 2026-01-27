@@ -5,9 +5,9 @@
 int main() {
 
     const std::string samplesPath = "/Users/vaayusaini/Documents/Local Documents/Projects/Projectile Defense/Samples/";
-    const std::string videoPath = samplesPath + "volleyball.mov";
+    const std::string videoPath = samplesPath + "basketball.mov";
 
-    cv::VideoCapture videoStream(0);
+    cv::VideoCapture videoStream(videoPath);
 
     std::string firstWindowName = "PD1";
     pd::ProjectileDetector pd1(firstWindowName, videoStream);
