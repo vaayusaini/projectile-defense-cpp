@@ -1,4 +1,4 @@
-#include "ProjectileDetector.h"
+#include "projectiledetector.h"
 
 namespace pd {
 
@@ -19,7 +19,7 @@ void drawProjectilesOnImage(cv::Mat &image, const std::vector<Projectile> &proje
         cv::rectangle(image, p.bbox, greenColor, 2);
 
         // Centroid
-        cv::Point centroidPos = cv::Point(static_cast<int>(p.centroid.x), static_cast<int>(p.centroid.y));
+        cv::Point centroidPos = cv::Point(static_cast<int>(p.center.x), static_cast<int>(p.center.y));
         cv::circle(image, centroidPos, 3, redColor, cv::FILLED);
     }
 }
@@ -94,7 +94,7 @@ int ProjectileDetector::extractProjectiles(const int numLabels, std::vector<Proj
         p.label = label;
         p.area = area;
         p.bbox = cv::Rect(x, y, w, h);
-        p.centroid = cv::Point2f(static_cast<float>(c[0]), static_cast<float>(c[1]));
+        p.center = cv::Point2f(static_cast<float>(c[0]), static_cast<float>(c[1]));
     }
 
     return static_cast<int>(out.size());
