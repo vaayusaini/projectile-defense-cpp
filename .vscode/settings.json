@@ -13,4 +13,7 @@
     "cmake.environment": {
         "PATH": "/opt/homebrew/bin:${env:PATH}"
     },
+    // Debug settings
+    "lldb.showDisassembly": "never",
+    "debug.disassemblyView.showSourceCode": false,
 }
