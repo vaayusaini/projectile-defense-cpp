@@ -7,7 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(projectile-defense MACOSX_BUNDLE
     src/main.cpp
     src/ProjectileDetector.cpp
-    src/ProjectileDetector.h)
+    src/ProjectileDetector.h
+    src/position.cpp
+    src/position.h)
 
 # vcpkg toolchain makes find_package() work out of the box
 find_package(OpenCV REQUIRED)

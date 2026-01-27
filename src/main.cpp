@@ -1,9 +1,10 @@
 #include "ProjectileDetector.h"
 #include <iostream>
 #include <opencv2/opencv.hpp>
+#include "position.h"
 
 int main() {
-
+    testPosition();
     const std::string samplesPath = "/Users/vaayusaini/Documents/Local Documents/Projects/Projectile Defense/Samples/";
     const std::string videoPath = samplesPath + "basketball.mov";
 
