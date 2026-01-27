@@ -5,14 +5,16 @@
 int main() {
 
     const std::string samplesPath = "/Users/vaayusaini/Documents/Local Documents/Projects/Projectile Defense/Samples/";
-    cv::VideoCapture videoStream(samplesPath + "basketball.mp4");
+    const std::string videoPath = samplesPath + "volleyball.mov";
+
+    cv::VideoCapture videoStream(0);
 
     std::string firstWindowName = "PD1";
     pd::ProjectileDetector pd1(firstWindowName, videoStream);
 
     const int64 startTime = cv::getTickCount();
 
-    pd1.setDebug(false);
+    pd1.setDebug(true);
 
     int frames_processed = 0;
     while (true) {
@@ -23,9 +25,9 @@ int main() {
         }
 
         frames_processed++;
-        // if (cv::waitKey(1) == 'q') {
-        //     break;
-        // }
+        if (cv::waitKey(1) == 'q') {
+            break;
+        }
     }
 
     const int64 endTime = cv::getTickCount();

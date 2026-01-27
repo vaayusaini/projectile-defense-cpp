@@ -39,8 +39,8 @@ class ProjectileDetector {
 
   private:
     bool _debug{};
-    std::string _name;
     DetectorConfig _config;
+    std::string _name;
 
     cv::Mat _closeKernel;
     cv::Ptr<cv::BackgroundSubtractorMOG2> _bgSubtractor;
