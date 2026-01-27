@@ -17,9 +17,9 @@ int main() {
     pd1.setDebug(true);
 
     int frames_processed = 0;
-    while (true) {
-        std::vector<pd::Projectile> projectileLabels;
+    std::vector<pd::Projectile> projectileLabels;
 
+    while (true) {
         if (!pd1.process(projectileLabels)) {
             break;
         }
