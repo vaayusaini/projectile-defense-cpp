@@ -16,8 +16,8 @@ struct DetectorConfig {
 
     int minArea = 1400;
     int connectivity = 8;
-    float minAspect = -1;
-    float maxAspect = -1;
+    float minAspect = 0;
+    float maxAspect = 10;
 };
 
 struct Projectile {
@@ -47,7 +47,9 @@ class ProjectileDetector {
     cv::VideoCapture &_videoStream;
 
     // reused per-frame buffers (avoid reallocations every frame)
-    cv::Mat _raw, _scaled, _fg, _mask;
+    cv::Mat _raw, _scaled, _fg, _mask, _labels, _stats, _centroids;
+
+    int extractProjectiles(int numLabels, std::vector<Projectile> &out) const;
 };
 
 } // namespace pd
