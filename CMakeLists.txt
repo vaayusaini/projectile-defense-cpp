@@ -10,7 +10,7 @@ add_executable(projectile-defense MACOSX_BUNDLE
     src/projectiledetector.h)
 
 # vcpkg toolchain makes find_package() work out of the box
-find_package(OpenCV REQUIRED)
+find_package(OpenCV CONFIG REQUIRED)
 
 # Link OpenCV components
 target_link_libraries(projectile-defense PRIVATE ${OpenCV_LIBS})
