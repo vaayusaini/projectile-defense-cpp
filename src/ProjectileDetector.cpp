@@ -47,7 +47,7 @@ bool ProjectileDetector::process(std::vector<Projectile> &projectiles) {
     // Close gaps in the foreground mask
     closeGaps(_fg, _mask, _closeKernel, _config.closeIterations);
 
-    // Get projectiles
+    // Get projectile labels
     int numLabels = cv::connectedComponentsWithStats(_mask, _labels, _stats, _centroids, _config.connectivity, CV_32S);
 
     // Extract projectiles to output vector
