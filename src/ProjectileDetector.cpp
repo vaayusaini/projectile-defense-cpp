@@ -20,8 +20,8 @@ void drawProjectilesOnImage(cv::Mat &image, const std::vector<Projectile> &proje
         cv::rectangle(image, p.bbox, greenColor, 2);
 
         // Centroid
-        cv::Point centroidPos = cv::Point(static_cast<int>(p.center.x), static_cast<int>(p.center.y));
-        cv::circle(image, centroidPos, 3, redColor, cv::FILLED);
+        cv::Point pixelCenter = cv::Point(static_cast<int>(p.center.x), static_cast<int>(p.center.y));
+        cv::circle(image, pixelCenter, 3, redColor, cv::FILLED);
     }
 }
 
