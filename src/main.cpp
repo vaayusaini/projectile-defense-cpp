@@ -1,5 +1,6 @@
 #include "position.h"
 #include "projectiledetector.h"
+#include "projectiletracker.h"
 #include <iostream>
 #include <opencv2/opencv.hpp>
 
@@ -8,7 +9,7 @@ int main() {
 
     const std::string videoPath = "./samples/basketball.mov";
 
-    cv::VideoCapture firstStream(videoPath);
+    cv::VideoCapture firstStream(0);
     cv::VideoCapture secondStream(1);
 
     std::string firstWindowName = "PD1";
@@ -21,15 +22,15 @@ int main() {
 
     int framesProcessed = 0;
     const int64 startTime = cv::getTickCount();
-    std::vector<pd::Projectile> firstProjectileLabels;
-    std::vector<pd::Projectile> secondProjectileLabels;
+    std::vector<pd::ProjectileFrame> firstProjectileFrames;
+    std::vector<pd::ProjectileFrame> secondProjectileFrames;
 
     while (true) {
-        if (!pd1.process(firstProjectileLabels)) {
+        if (!pd1.process(framesProcessed, firstProjectileFrames)) {
             break;
         }
 
-        if (!pd2.process(secondProjectileLabels)) {
+        if (!pd2.process(framesProcessed, secondProjectileFrames)) {
             break;
         }
 

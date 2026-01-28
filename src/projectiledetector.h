@@ -1,4 +1,5 @@
 #pragma once
+#include "projectiletracker.h"
 #include <opencv2/opencv.hpp>
 
 namespace pd {
@@ -20,21 +21,13 @@ struct DetectorConfig {
     float maxAspect = 10;
 };
 
-struct Projectile {
-    int label = -1;
-    int area = 0;
-
-    cv::Rect bbox;      // x,y,w,h
-    cv::Point2f center; // cx,cy
-};
-
 class ProjectileDetector {
 
   public:
-    explicit ProjectileDetector(std::string name, cv::VideoCapture &videoStream, DetectorConfig config = {});
+    explicit ProjectileDetector(std::string name, cv::VideoCapture& videoStream, DetectorConfig config = {});
     ~ProjectileDetector() = default;
 
-    bool process(std::vector<Projectile> &projectiles);
+    bool process(const int frame, std::vector<ProjectileFrame>& projectiles);
     void applyConfig(DetectorConfig config);
     void setDebug(bool debug);
 
@@ -45,12 +38,12 @@ class ProjectileDetector {
 
     cv::Mat _closeKernel;
     cv::Ptr<cv::BackgroundSubtractorMOG2> _bgSubtractor;
-    cv::VideoCapture &_videoStream;
+    cv::VideoCapture& _videoStream;
 
     // reused per-frame buffers (avoid reallocations every frame)
     cv::Mat _raw, _scaled, _fg, _mask, _labels, _stats, _centroids;
 
-    int extractProjectiles(int numLabels, std::vector<Projectile> &out) const;
+    int _extractProjectiles(int numLabels, int frame, std::vector<ProjectileFrame>& out) const;
 };
 
 } // namespace pd

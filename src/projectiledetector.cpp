@@ -1,4 +1,5 @@
 #include "projectiledetector.h"
+#include "projectiletracker.h"
 #include <opencv2/opencv.hpp>
 
 namespace pd {
@@ -14,13 +15,15 @@ template <typename V, typename L, typename H> bool isWithinBounds(V value, L min
 const cv::Scalar greenColor = cv::Scalar(0, 255, 0);
 const cv::Scalar redColor = cv::Scalar(0, 0, 255);
 
-void drawProjectilesOnImage(cv::Mat &image, const std::vector<Projectile> &projectiles) {
-    for (const Projectile &p : projectiles) {
+void drawProjectilesOnImage(cv::Mat &image, const std::vector<ProjectileFrame> &projectiles) {
+    for (const ProjectileFrame &p : projectiles) {
+
         // Bounding box
-        cv::rectangle(image, p.bbox, greenColor, 2);
+        cv::Rect bbox(p.x, p.y, p.w, p.h);
+        cv::rectangle(image, bbox, greenColor, 2);
 
         // Centroid
-        cv::Point pixelCenter = cv::Point(static_cast<int>(p.center.x), static_cast<int>(p.center.y));
+        cv::Point pixelCenter = cv::Point(p.cx, p.cy);
         cv::circle(image, pixelCenter, 3, redColor, cv::FILLED);
     }
 }
@@ -33,7 +36,7 @@ ProjectileDetector::ProjectileDetector(std::string name, cv::VideoCapture &video
     applyConfig(config);
 }
 
-bool ProjectileDetector::process(std::vector<Projectile> &projectiles) {
+bool ProjectileDetector::process(const int frame, std::vector<ProjectileFrame> &projectiles) {
     _videoStream.read(_raw);
     if (_raw.empty()) {
         return false;
@@ -52,7 +55,7 @@ bool ProjectileDetector::process(std::vector<Projectile> &projectiles) {
     int numLabels = cv::connectedComponentsWithStats(_mask, _labels, _stats, _centroids, _config.connectivity, CV_32S);
 
     // Extract projectiles to output vector
-    extractProjectiles(numLabels, projectiles);
+    _extractProjectiles(numLabels, frame, projectiles);
 
     if (_debug) {
         drawProjectilesOnImage(_scaled, projectiles);
@@ -62,7 +65,7 @@ bool ProjectileDetector::process(std::vector<Projectile> &projectiles) {
     return true;
 }
 
-int ProjectileDetector::extractProjectiles(const int numLabels, std::vector<Projectile> &out) const {
+int ProjectileDetector::_extractProjectiles(const int numLabels, const int frame, std::vector<ProjectileFrame> &out) const {
     out.clear();
 
     if (numLabels <= 1)
@@ -91,11 +94,12 @@ int ProjectileDetector::extractProjectiles(const int numLabels, std::vector<Proj
         if (aspect < _config.minAspect || aspect > _config.maxAspect)
             continue;
 
-        Projectile &p = out.emplace_back();
-        p.label = label;
+        ProjectileFrame &p = out.emplace_back();
+        p.x = x, p.y = y, p.w = w, p.h = h;
+        p.frame = frame;
+
         p.area = area;
-        p.bbox = cv::Rect(x, y, w, h);
-        p.center = cv::Point2f(static_cast<float>(c[0]), static_cast<float>(c[1]));
+        p.cx = x + w/2; p.cy = y + h/2;
     }
 
     return static_cast<int>(out.size());
