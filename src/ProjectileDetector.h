@@ -23,8 +23,9 @@ struct DetectorConfig {
 struct Projectile {
     int label = -1;
     int area = 0;
-    cv::Rect bbox;        // x,y,w,h
-    cv::Point2f centroid; // cx,cy
+
+    cv::Rect bbox;      // x,y,w,h
+    cv::Point2f center; // cx,cy
 };
 
 class ProjectileDetector {

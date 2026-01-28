@@ -4,15 +4,11 @@ project(projectile-defense LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(projectile-defense MACOSX_BUNDLE
-    src/main.cpp
-    src/projectiledetector.cpp
-    src/projectiledetector.h
-    src/position.cpp
-    src/position.h)
+file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp src/*.h)
+add_executable(projectile-defense MACOSX_BUNDLE ${SRC_FILES})
 
 # vcpkg toolchain makes find_package() work out of the box
-find_package(OpenCV REQUIRED)
+find_package(OpenCV CONFIG REQUIRED)
 
 # Link OpenCV components
 target_link_libraries(projectile-defense PRIVATE ${OpenCV_LIBS})
