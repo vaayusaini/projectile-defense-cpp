@@ -10,17 +10,17 @@ int main() {
 
     const std::string videoPath = "./samples/basketball.mov";
 
-    cv::VideoCapture firstStream(0);
+    cv::VideoCapture firstStream(videoPath);
     std::string firstWindowName = "PD1";
     std::vector<pd::ProjectileFrame> firstProjectileFrames;
     pd::ProjectileDetector pd1(firstWindowName, firstStream);
-    pd1.setDebug(true);
+    pd1.setDebug(false);
 
-    cv::VideoCapture secondStream(1);
+    cv::VideoCapture secondStream(videoPath);
     std::string secondWindowName = "PD2";
     std::vector<pd::ProjectileFrame> secondProjectileFrames;
     pd::ProjectileDetector pd2(secondWindowName, secondStream);
-    pd2.setDebug(true);
+    pd2.setDebug(false);
 
     int framesProcessed = 0;
     const int64 startTime = cv::getTickCount();
