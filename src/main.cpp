@@ -2,6 +2,7 @@
 #include "projectiledetector.h"
 #include "projectiletracker.h"
 #include <iostream>
+#include <opencv2/core/utility.hpp>
 #include <opencv2/opencv.hpp>
 
 int main() {
@@ -10,29 +11,28 @@ int main() {
     const std::string videoPath = "./samples/basketball.mov";
 
     cv::VideoCapture firstStream(0);
-    // cv::VideoCapture secondStream(1);
-
     std::string firstWindowName = "PD1";
+    std::vector<pd::ProjectileFrame> firstProjectileFrames;
     pd::ProjectileDetector pd1(firstWindowName, firstStream);
     pd1.setDebug(true);
 
-    // std::string secondWindowName = "PD2";
-    // pd::ProjectileDetector pd2(secondWindowName, secondStream);
-    // pd2.setDebug(true);
+    cv::VideoCapture secondStream(1);
+    std::string secondWindowName = "PD2";
+    std::vector<pd::ProjectileFrame> secondProjectileFrames;
+    pd::ProjectileDetector pd2(secondWindowName, secondStream);
+    pd2.setDebug(true);
 
     int framesProcessed = 0;
     const int64 startTime = cv::getTickCount();
-    std::vector<pd::ProjectileFrame> firstProjectileFrames;
-    std::vector<pd::ProjectileFrame> secondProjectileFrames;
 
     while (true) {
-        if (!pd1.process(framesProcessed, firstProjectileFrames)) {
+        if (!pd1.findProjectiles(framesProcessed, firstProjectileFrames)) {
             break;
         }
 
-        // if (!pd2.process(framesProcessed, secondProjectileFrames)) {
-        //     break;
-        // }
+        if (!pd2.findProjectiles(framesProcessed, secondProjectileFrames)) {
+            break;
+        }
 
         framesProcessed++;
         if (cv::waitKey(1) == 'q') {
@@ -47,7 +47,7 @@ int main() {
     std::cout << secondsElapsed << std::endl;
 
     firstStream.release();
-    // secondStream.release();
+    secondStream.release();
     cv::destroyAllWindows();
 
     return 0;
