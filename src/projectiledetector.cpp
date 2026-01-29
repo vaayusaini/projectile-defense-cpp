@@ -19,11 +19,11 @@ void drawProjectilesOnImage(cv::Mat &image, const std::vector<ProjectileFrame> &
     for (const ProjectileFrame &p : projectiles) {
 
         // Bounding box
-        cv::Rect bbox(p.x, p.y, p.w, p.h);
+        cv::Rect bbox(p.bbox.topLeft.x, p.bbox.topLeft.y, p.bbox.dimensions.x, p.bbox.dimensions.y);
         cv::rectangle(image, bbox, greenColor, 2);
 
         // Centroid
-        cv::Point pixelCenter = cv::Point(p.cx, p.cy);
+        cv::Point pixelCenter = cv::Point(p.center.x, p.center.y);
         cv::circle(image, pixelCenter, 3, redColor, cv::FILLED);
     }
 }
@@ -36,7 +36,7 @@ ProjectileDetector::ProjectileDetector(std::string name, cv::VideoCapture &video
     applyConfig(config);
 }
 
-bool ProjectileDetector::process(const int frame, std::vector<ProjectileFrame> &projectiles) {
+bool ProjectileDetector::findProjectiles(const int frame, std::vector<ProjectileFrame> &projectiles) {
     _videoStream.read(_raw);
     if (_raw.empty()) {
         return false;
@@ -55,7 +55,7 @@ bool ProjectileDetector::process(const int frame, std::vector<ProjectileFrame> &
     int numLabels = cv::connectedComponentsWithStats(_mask, _labels, _stats, _centroids, _config.connectivity, CV_32S);
 
     // Extract projectiles to output vector
-    _extractProjectiles(numLabels, frame, projectiles);
+    _extractProjectilesFromBuffers(numLabels, frame, projectiles);
 
     if (_debug) {
         drawProjectilesOnImage(_scaled, projectiles);
@@ -65,7 +65,8 @@ bool ProjectileDetector::process(const int frame, std::vector<ProjectileFrame> &
     return true;
 }
 
-int ProjectileDetector::_extractProjectiles(const int numLabels, const int frame, std::vector<ProjectileFrame> &out) const {
+int ProjectileDetector::_extractProjectilesFromBuffers(const int numLabels, const int frame,
+                                                       std::vector<ProjectileFrame> &out) const {
     out.clear();
 
     if (numLabels <= 1)
@@ -95,11 +96,15 @@ int ProjectileDetector::_extractProjectiles(const int numLabels, const int frame
             continue;
 
         ProjectileFrame &p = out.emplace_back();
-        p.x = x, p.y = y, p.w = w, p.h = h;
+        p.bbox.topLeft.x = x;
+        p.bbox.topLeft.y = y;
+        p.bbox.dimensions.x = w;
+        p.bbox.dimensions.y = h;
         p.frame = frame;
 
-        p.area = area;
-        p.cx = x + w/2; p.cy = y + h/2;
+        p.bbox.area = area;
+        p.center.x = x + w / 2;
+        p.center.y = y + h / 2;
     }
 
     return static_cast<int>(out.size());
