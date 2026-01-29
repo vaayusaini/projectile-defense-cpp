@@ -4,11 +4,22 @@
 
 namespace pd {
 
-struct ProjectileFrame {
+struct Pixel {
+    int x;
+    int y;
+};
+
+struct BoundingBox {
+    Pixel topLeft;
+    Pixel dimensions;
+
     int area;
-    int x; int y; int h; int w;
-    int cx; int cy;
     float aspectRatio;
+};
+
+struct ProjectileFrame {
+    BoundingBox bbox;
+    Pixel center;
     int frame;
 };
 
@@ -18,17 +29,16 @@ struct ProjectileState {
 };
 
 class ProjectileTracker {
-    public:
-        ProjectileTracker();
-        void processProjectile(std::vector<ProjectileFrame> frameProjectiles);
-        void getActiveProjectiles(std::vector<ProjectileState>& out);
+  public:
+    ProjectileTracker();
+    void checkForPersistentProjectiles(std::vector<ProjectileFrame> frameProjectiles);
+    void getPersistentProjectiles(std::vector<ProjectileState> &out);
 
-    private:
-        std::vector<ProjectileState> _projectileStates;
-        bool _getOrCreateProjectileState(ProjectileFrame& projectileFrame);
-        void _addFrameToProjectileState(ProjectileFrame& projectileFrame);
-        void _deleteOldProjectiles();
+  private:
+    std::vector<ProjectileState> _projectileStates;
+
+    ProjectileState &_getOrCreateProjectileState(ProjectileFrame &projectileFrame);
+    void _deleteOldProjectiles();
 };
 
-
-}
+} // namespace pd
