@@ -24,11 +24,11 @@ struct DetectorConfig {
 class ProjectileDetector {
 
   public:
-    explicit ProjectileDetector(std::string name, cv::VideoCapture& videoStream, DetectorConfig config = {});
+    explicit ProjectileDetector(std::string name, cv::VideoCapture &videoStream, DetectorConfig config = {});
     ~ProjectileDetector() = default;
 
-    bool process(const int frame, std::vector<ProjectileFrame>& projectiles);
     void applyConfig(DetectorConfig config);
+    bool findProjectiles(const int frame, std::vector<ProjectileFrame> &projectiles);
     void setDebug(bool debug);
 
   private:
@@ -38,12 +38,12 @@ class ProjectileDetector {
 
     cv::Mat _closeKernel;
     cv::Ptr<cv::BackgroundSubtractorMOG2> _bgSubtractor;
-    cv::VideoCapture& _videoStream;
+    cv::VideoCapture &_videoStream;
 
     // reused per-frame buffers (avoid reallocations every frame)
     cv::Mat _raw, _scaled, _fg, _mask, _labels, _stats, _centroids;
 
-    int _extractProjectiles(int numLabels, int frame, std::vector<ProjectileFrame>& out) const;
+    int _extractProjectilesFromBuffers(int numLabels, int frame, std::vector<ProjectileFrame> &out) const;
 };
 
 } // namespace pd
