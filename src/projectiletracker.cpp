@@ -7,7 +7,7 @@ ProjectileTracker::ProjectileTracker() : _projectileStates() {};
 
 ProjectileState* ProjectileTracker::_getOrCreateProjectileState(ProjectileFrame* newProjectileFrame) {
     ProjectileState* bestStateMatch = nullptr;
-    double bestMatchScore = 2;
+    double bestMatchScore = 2; // i chose this so that (score < bestMatchScore) will return True for the first value 
     for (ProjectileState* ps : _projectileStates) {
         ProjectileFrame* lastFrame = ps->history.back();
         double areaComparison = abs(std::log2(lastFrame->bbox.area / newProjectileFrame->bbox.area)); // if its less than 1 it means the new area is between half and double the old one
@@ -17,10 +17,10 @@ ProjectileState* ProjectileTracker::_getOrCreateProjectileState(ProjectileFrame*
             bestMatchScore = score;
             bestStateMatch = ps;
         }
-    };
+    }
     if (bestStateMatch) { //if its not a nullptr
         int missing_slots =  newProjectileFrame->frame - bestStateMatch->lastUpdateFrame;
-        for (int i = 0; i < missing_slots; ++i) {
+        for (int i = 0; i < missing_slots; ++i) { //adding a new ProjectileFrame to the end of the State's history
             bestStateMatch->history.emplace_back();
         };
         return bestStateMatch;
@@ -29,8 +29,7 @@ ProjectileState* ProjectileTracker::_getOrCreateProjectileState(ProjectileFrame*
         newState->history.push_back(newProjectileFrame);
         return newState;
     }
-
-};
+}
 
 void ProjectileTracker::_sortAndDeleteOldProjectiles(int currentFrameNumber) {
     if (!_projectileStates.empty()) {
@@ -40,15 +39,12 @@ void ProjectileTracker::_sortAndDeleteOldProjectiles(int currentFrameNumber) {
                     return a.lastUpdateFrame > b.lastUpdateFrame;
                 return a.history.size() > b.history.size();
             });
-        int toRemove = 0; //this section is fugly im sorry vaayu
-        for (ProjectileState* ps : _projectileStates) {
-            if ((currentFrameNumber - ps->lastUpdateFrame) > 3) {
-                toRemove += 1;
+        for (int i = _projectileStates.size(); i-- > 0; ) {
+            if ((currentFrameNumber - _projectileStates[i]->lastUpdateFrame) > 3) {
+                _projectileStates.erase(_projectileStates.begin() + i);
             }
         }
-        for (int i = 0; i < toRemove; ++i) {
-            _projectileStates.pop_back();
-        }
+
     }
 }
 

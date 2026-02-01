@@ -31,16 +31,18 @@ struct ProjectileState {
 };
 
 class ProjectileTracker {
-  public:
-    ProjectileTracker();
-    void checkForPersistentProjectiles(int currentFrame, std::vector<ProjectileFrame*> frameProjectiles);
-    void getPersistentProjectiles(std::vector<ProjectileState*> out);
-
   private:
     std::vector<ProjectileState*> _projectileStates;
 
     ProjectileState* _getOrCreateProjectileState(ProjectileFrame* newProjectileFrame);
     void _sortAndDeleteOldProjectiles(int currentFrameNumber);
+
+  public:
+    ProjectileTracker();
+    
+    void checkForPersistentProjectiles(int currentFrame, std::vector<ProjectileFrame*> frameProjectiles);
+    void getPersistentProjectiles(std::vector<ProjectileState*> out);
+
 };
 
 } // namespace pd
