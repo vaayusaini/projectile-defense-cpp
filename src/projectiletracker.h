@@ -24,22 +24,20 @@ struct ProjectileFrame {
 };
 
 struct ProjectileState {
-    int lastUpdateFrame;
+    int lastUpdateFrame = 0;
     std::vector<ProjectileFrame*> history;
-
-    ProjectileState(const int frame) : lastUpdateFrame(frame) {};
 };
 
 class ProjectileTracker {
   private:
-    std::vector<ProjectileState*> _projectileStates;
+    std::vector<ProjectileState> _projectileStates;
 
     ProjectileState* _getOrCreateProjectileState(ProjectileFrame* newProjectileFrame);
     void _sortAndDeleteOldProjectiles(int currentFrameNumber);
 
   public:
     ProjectileTracker();
-    
+
     void checkForPersistentProjectiles(int currentFrame, std::vector<ProjectileFrame*> frameProjectiles);
     void getPersistentProjectiles(std::vector<ProjectileState*> out);
 

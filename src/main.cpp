@@ -6,8 +6,6 @@
 #include <opencv2/opencv.hpp>
 
 int main() {
-    testPosition();
-
     const std::string videoPath = "./samples/basketball.mov";
 
     cv::VideoCapture firstStream(videoPath);
