@@ -23,21 +23,25 @@ double boxPlot(std::vector<double> v) {
 
 Projectile::Projectile(std::vector<CoordinateFrame>& coords): _coordinates(coords) {};
 
-void Projectile::_updateVelocityVectors(CoordinateFrame firstFrame, CoordinateFrame secondFrame) {
+void Projectile::_updateTrendlineVectors(CoordinateFrame firstFrame, CoordinateFrame secondFrame) {
     int framesElapsed = secondFrame.frameNumber - firstFrame.frameNumber;
     double timeElapsed = (1/30) * framesElapsed;
+    double currentTime = (1 / 30) * secondFrame.frameNumber;
+
     double latestXVelocity = (secondFrame.x - firstFrame.x) / timeElapsed; //the 1/30 converts frames into seconds
     double latestZVelocity = (secondFrame.z - firstFrame.z) / timeElapsed; //the 1/30 converts frames into seconds
+
     double latestYVelocity = (secondFrame.y - firstFrame.y) / timeElapsed;
     double latestStartingYVelocity = latestYVelocity + 4.9 * ((1/30) * (secondFrame.frameNumber + firstFrame.frameNumber)); //look in lucas' atpet notebook if you need to understand this
-    double latestStartingYPosition = 4.9 * (secondFrame.frameNumber * (1 / 30)) * (secondFrame.frameNumber * (1 / 30)) - latestStartingYVelocity * (secondFrame.frameNumber * (1 / 30)) + secondFrame.y;
+    double latestStartingYPosition = 4.9 * currentTime * currentTime - latestStartingYVelocity * currentTime + secondFrame.y;
+    
     for (int i = 0; i < framesElapsed; ++i) {
         _xVelocities.push_back(latestXVelocity);
         _zVelocities.push_back(latestZVelocity);
         _yVelocities.push_back(latestStartingYVelocity);
 
-        _xInitials.push_back(secondFrame.x - latestXVelocity * secondFrame.frameNumber * (1/30));
-        _zInitials.push_back(secondFrame.z - latestZVelocity * secondFrame.frameNumber * (1/30));
+        _xInitials.push_back(secondFrame.x - latestXVelocity * currentTime);
+        _zInitials.push_back(secondFrame.z - latestZVelocity * currentTime);
         _yInitials.push_back(latestStartingYPosition);
     }
     std::sort(_xVelocities.begin(), _xVelocities.end());
@@ -51,7 +55,7 @@ void Projectile::_updateVelocityVectors(CoordinateFrame firstFrame, CoordinateFr
 
 void Projectile::_updateTrendline() {
     for (int i = _coordinatesProcessed; _coordinates.size(); ++i) {
-        _updateVelocityVectors(_coordinates[i - 1], _coordinates[i]);
+        _updateTrendlineVectors(_coordinates[i - 1], _coordinates[i]);
     }
 
     _vx = boxPlot(_xVelocities);

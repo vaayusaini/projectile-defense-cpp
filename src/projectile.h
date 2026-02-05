@@ -24,7 +24,7 @@ private:
 
     std::vector<CoordinateFrame>& _coordinates;
 
-    void _updateVelocityVectors(CoordinateFrame firstFrame, CoordinateFrame secondFrame);
+    void _updateTrendlineVectors(CoordinateFrame firstFrame, CoordinateFrame secondFrame);
     void _updateTrendline();
 
     double _xPosition(double time);
