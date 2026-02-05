@@ -18,7 +18,7 @@ private:
     ProjectileState* _cam2State;
     int lastUpdateFrame = 0;
 
-    void addCoordinate(ProjectileFrame* cam1Frame, ProjectileFrame* cam2Frame);
+    void _addCoordinate(ProjectileFrame* cam1Frame, ProjectileFrame* cam2Frame);
 
 
 public:
