@@ -4,7 +4,10 @@
 #include <QuartzCore/QuartzCore.hpp>
 #include <iostream>
 
+#include "video/play_video.h"
+
 int main() {
     std::cout << "Hello World!" << std::endl;
+    videowidget::playVideoThenExit("./samples/basketball.mov");
     return 0;
 }
