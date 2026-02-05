@@ -12,8 +12,8 @@ find_package(OpenCV CONFIG REQUIRED)
 find_package(cserialport CONFIG REQUIRED)
 
 # Link OpenCV components
-target_include_directories(projectile-defense PRIVATE ${CSerialPort_INCLUDE_DIR})
-target_link_libraries(projectile-defense PRIVATE ${OpenCV_LIBS} ${CSerialPort_Library})
+target_include_directories(projectile-defense PRIVATE ${CSerialPort_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/external/metal-cpp)
+target_link_libraries(projectile-defense PRIVATE ${OpenCV_LIBS} ${CSerialPort_Library} "-framework Metal" "-framework Foundation" "-framework QuartzCore")
 
 # Build as a macOS .app bundle
 set_target_properties(projectile-defense PROPERTIES
