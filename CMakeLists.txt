@@ -13,7 +13,15 @@ find_package(cserialport CONFIG REQUIRED)
 
 # Link OpenCV components
 target_include_directories(projectile-defense PRIVATE ${CSerialPort_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/external/metal-cpp)
-target_link_libraries(projectile-defense PRIVATE ${OpenCV_LIBS} ${CSerialPort_Library} "-framework Metal" "-framework Foundation" "-framework QuartzCore")
+target_link_libraries(projectile-defense PRIVATE ${OpenCV_LIBS} ${CSerialPort_Library}
+    "-framework AVFoundation" "-framework AVKit" "-framework AppKit" "-framework CoreMedia" "-framework CoreVideo"
+    "-framework Metal" "-framework Foundation" "-framework QuartzCore"
+)
+
+# Implement for ObjC++ files ARC (automatic reference counting) for Objective-C++ files
+target_compile_options(projectile-defense PRIVATE
+  $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
+)
 
 # Build as a macOS .app bundle
 set_target_properties(projectile-defense PROPERTIES
