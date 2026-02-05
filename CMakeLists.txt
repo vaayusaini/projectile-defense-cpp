@@ -4,7 +4,7 @@ project(projectile-defense LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp src/*.h)
+file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp src/*.h src/*.mm)
 add_executable(projectile-defense MACOSX_BUNDLE ${SRC_FILES})
 
 # vcpkg toolchain makes find_package() work out of the box
