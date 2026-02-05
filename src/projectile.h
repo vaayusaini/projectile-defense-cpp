@@ -39,7 +39,7 @@ public:
 
     void getIntercept();
     double releaseAngle;
-    double releaseTime
+    double releaseTime;
 };
 
 
