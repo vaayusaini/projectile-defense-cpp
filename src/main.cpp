@@ -4,7 +4,7 @@
 #include <QuartzCore/QuartzCore.hpp>
 #include <iostream>
 
-#include "video/play_video.h"
+#include "video/playvideo.h"
 
 int main() {
     std::cout << "Hello World!" << std::endl;
