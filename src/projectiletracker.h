@@ -18,6 +18,7 @@ struct BoundingBox {
 };
 
 struct ProjectileFrame {
+    bool real = true;
     BoundingBox bbox;
     Pixel center;
     int frame;
@@ -25,21 +26,21 @@ struct ProjectileFrame {
 
 struct ProjectileState {
     int lastUpdateFrame = 0;
-    std::vector<ProjectileFrame*> history;
+    int framesContained = 0;
+    std::vector<ProjectileFrame> history;
 };
 
 class ProjectileTracker {
   private:
     std::vector<ProjectileState> _projectileStates;
 
-    ProjectileState* _getOrCreateProjectileState(ProjectileFrame* newProjectileFrame);
+    void _getOrCreateProjectileState(ProjectileFrame newProjectileFrame);
     void _sortAndDeleteOldProjectiles(int currentFrameNumber);
 
   public:
     ProjectileTracker();
 
-    void checkForPersistentProjectiles(int currentFrame, std::vector<ProjectileFrame*> frameProjectiles);
-    void getPersistentProjectiles(std::vector<ProjectileState*> out);
+    ProjectileState* getMainProjectile(int currentFrame, std::vector<ProjectileFrame> frameProjectiles);
 
 };
 

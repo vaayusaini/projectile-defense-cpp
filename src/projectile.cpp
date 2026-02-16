@@ -101,8 +101,10 @@ void Projectile::_calculateIntercept() {
 }
 
 void Projectile::getIntercept() {
-    _updateTrendline();
-    _calculateIntercept();
+    if (_coordinates.size() > 1) {
+        _updateTrendline();
+        _calculateIntercept();
+    }
 }
 
 }

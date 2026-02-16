@@ -9,14 +9,14 @@ struct DetectorConfig {
 
     int bgHistory = 16;
     bool detectShadows = false;
-    double varThreshold = 512;
-    double bgRatio = 0.978;
+    double varThreshold = 64;
+    double bgRatio = 0.99;
 
-    int closeKernelSize = 16;
+    int closeKernelSize = 4;
     int closeIterations = 2;
 
-    int minArea = 1400;
-    int connectivity = 8;
+    int minArea = 50;
+    int connectivity = 4;
     float minAspect = 0;
     float maxAspect = 10;
 };

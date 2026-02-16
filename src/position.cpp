@@ -7,13 +7,13 @@ const double camAngleX = 1.0472;
 const double cam1TiltX = 0.174533;
 const double cam2TiltX = -0.174533;
 const double camAngleY = 0.628319;
-const int camResolutionX = 1920;
-const int camResolutionY = 1080;
+const int camResolutionX = 640;//make sure these match vaayu's imscale
+const int camResolutionY = 360;
 
 // Camera Positioning relative to 0,0
-const double cam1X = -0.5715;
+const double cam1X = -0.5874;
 const double cam1Y = 0;
-const double cam2X = 0.5715;
+const double cam2X = 0.5874;
 const double cam2Y = 0.6096;
 const double camSeparationX = cam2X - cam1X;
 const double camSeparationY = cam2Y - cam1Y;

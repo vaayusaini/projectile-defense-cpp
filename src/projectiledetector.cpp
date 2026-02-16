@@ -103,6 +103,7 @@ int ProjectileDetector::_extractProjectilesFromBuffers(const int numLabels, cons
         p.frame = frame;
 
         p.bbox.area = area;
+        p.bbox.aspectRatio = aspect;
         p.center.x = x + w / 2;
         p.center.y = y + h / 2;
     }

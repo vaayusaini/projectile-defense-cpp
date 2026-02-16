@@ -1,5 +1,6 @@
 #include "cameracomparison.h"
 #include "position.h"
+#include <iostream>
 
 namespace pd {
 
@@ -12,10 +13,10 @@ bool CameraComparison::sameStates(ProjectileState* cam1, ProjectileState* cam2) 
     return false;
 }
 
-void CameraComparison::_addCoordinate(ProjectileFrame* cam1Frame, ProjectileFrame* cam2Frame) {
-    if (cam1Frame and cam2Frame) { //if neither one is a nullptr
-        std::vector<double> newCoordVector = findCoordinates(cam1Frame->center.x, cam1Frame->center.y, cam2Frame->center.x, cam2Frame->center.y);
-        CoordinateFrame newCoord = CoordinateFrame(cam1Frame->frame, newCoordVector[0], newCoordVector[1], newCoordVector[2]);
+void CameraComparison::_addCoordinate(ProjectileFrame cam1Frame, ProjectileFrame cam2Frame) {
+    if (cam1Frame.real and cam2Frame.real) { //if neither one is a nullptr
+        std::vector<double> newCoordVector = findCoordinates(cam1Frame.center.x, cam1Frame.center.y, cam2Frame.center.x, cam2Frame.center.y);
+        CoordinateFrame newCoord = CoordinateFrame(cam1Frame.frame, newCoordVector[0], newCoordVector[1], newCoordVector[2]);
         coordinates.push_back(newCoord);
     }
 }
