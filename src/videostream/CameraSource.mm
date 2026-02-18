@@ -11,9 +11,7 @@
 #include <mutex>
 #include <utility>
 
-#pragma mark - ObjC delegate (global namespace)
-
-// No C++ types here. Just an opaque context pointer + callback.
+// Custom frame delegate object that captures
 @interface PDFrameDelegate : NSObject <AVCaptureVideoDataOutputSampleBufferDelegate>
 @property(nonatomic, assign) void *ctx;
 @property(nonatomic, assign) void (*onSample)(void *ctx, CMSampleBufferRef sample);
@@ -91,20 +89,11 @@ struct LatestFrame {
 
 static void *const kCaptureQueueKey = (void *)&kCaptureQueueKey;
 
-static void DebugPrintDevices(NSArray<AVCaptureDevice *> *devices) {
-  std::fprintf(stderr, "[pd] Discovered %lu camera device(s):\n", (unsigned long)devices.count);
-  for (NSUInteger i = 0; i < devices.count; ++i) {
-    AVCaptureDevice *d = devices[i];
-    std::fprintf(stderr, "  [%lu] %s  (uniqueID=%s, type=%s)\n", (unsigned long)i, d.localizedName.UTF8String,
-                 d.uniqueID.UTF8String, d.deviceType.UTF8String);
-  }
-}
-
-static NSArray<AVCaptureDevice *> *DiscoverVideoDevices() {
+static NSArray<AVCaptureDevice *> *discoverVideoDevices() {
   // NOTE: Continuity Camera is critical if you want iPhone devices to appear.
   NSArray<AVCaptureDeviceType> *types = @[
     AVCaptureDeviceTypeBuiltInWideAngleCamera,
-    AVCaptureDeviceTypeExternalUnknown,
+    AVCaptureDeviceTypeExternal,
 #if defined(AVCaptureDeviceTypeContinuityCamera)
     AVCaptureDeviceTypeContinuityCamera,
 #endif
@@ -117,12 +106,8 @@ static NSArray<AVCaptureDevice *> *DiscoverVideoDevices() {
   return discovery.devices ?: @[];
 }
 
-static AVCaptureDevice *DeviceForIndex(int idx) {
-  NSArray<AVCaptureDevice *> *devices = DiscoverVideoDevices();
-  DebugPrintDevices(devices);
-
-  if (devices.count == 0)
-    return nil;
+static AVCaptureDevice *deviceForIndex(int idx) {
+  NSArray<AVCaptureDevice *> *devices = discoverVideoDevices();
   if (idx < 0 || idx >= (int)devices.count)
     return nil;
   return devices[(NSUInteger)idx];
@@ -132,13 +117,10 @@ static AVCaptureDevice *DeviceForIndex(int idx) {
 struct CameraSource::Impl {
   explicit Impl(int idx) : deviceIndex(idx) {}
   ~Impl() {
-    alive->store(false, std::memory_order_relaxed);
     stop();
   }
 
-  // Returns true if:
-  //  - already running, OR
-  //  - start is in progress (permission request and/or async startRunning).
+  // Single-lifetime setup: start once, stop once, no restart.
   bool start();
 
   // Internal: assumes permission already granted.
@@ -159,7 +141,6 @@ struct CameraSource::Impl {
   int deviceIndex = 0;
 
   AVCaptureSession *session = nil;
-  AVCaptureDeviceInput *input = nil;
   AVCaptureVideoDataOutput *output = nil;
 
   dispatch_queue_t captureQueue = nullptr;
@@ -167,27 +148,31 @@ struct CameraSource::Impl {
 
   std::mutex m;
   bool running = false;
-  bool startRequested = false;
+  bool shutdownRequested = false;
 
   LatestFrame latest;
 
-  std::shared_ptr<std::atomic<bool>> alive = std::make_shared<std::atomic<bool>>(true);
+  // Captured by async callbacks to avoid touching `this` after shutdown/destruction.
+  std::shared_ptr<std::atomic<bool>> lifetimeAlive = std::make_shared<std::atomic<bool>>(true);
 
-  // simple counter for rate-limited logging
-  uint64_t logCounter = 0;
 };
 
 bool CameraSource::Impl::start() {
   {
     std::lock_guard<std::mutex> lock(m);
+    if (shutdownRequested)
+      return false;
     if (running)
       return true;
-    if (startRequested)
-      return true;
-    startRequested = true;
   }
 
   @autoreleasepool {
+    auto failStart = [&]() {
+      std::lock_guard<std::mutex> lock(m);
+      running = false;
+      return false;
+    };
+
     AVAuthorizationStatus st = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
 
     if (st == AVAuthorizationStatusAuthorized) {
@@ -196,14 +181,11 @@ bool CameraSource::Impl::start() {
 
     if (st == AVAuthorizationStatusDenied || st == AVAuthorizationStatusRestricted) {
       std::fprintf(stderr, "[pd] Camera permission denied/restricted.\n");
-      std::lock_guard<std::mutex> lock(m);
-      running = false;
-      startRequested = false;
-      return false;
+      return failStart();
     }
 
     // NotDetermined: request permission (triggers prompt).
-    auto aliveToken = alive;
+    auto aliveToken = lifetimeAlive;
     auto *self = this;
 
     std::fprintf(stderr, "[pd] Requesting camera permission...\n");
@@ -216,7 +198,6 @@ bool CameraSource::Impl::start() {
                                  std::fprintf(stderr, "[pd] Camera permission NOT granted.\n");
                                  std::lock_guard<std::mutex> lock(self->m);
                                  self->running = false;
-                                 self->startRequested = false;
                                  return;
                                }
 
@@ -240,20 +221,24 @@ bool CameraSource::Impl::start() {
 bool CameraSource::Impl::startAuthorized() {
   {
     std::lock_guard<std::mutex> lock(m);
+    if (shutdownRequested)
+      return false;
     if (running && session != nil) {
-      startRequested = false;
       return true;
     }
   }
 
   @autoreleasepool {
-    AVCaptureDevice *dev = DeviceForIndex(deviceIndex);
-    if (!dev) {
-      std::fprintf(stderr, "[pd] No camera device for index %d.\n", deviceIndex);
+    auto failStart = [&]() {
       std::lock_guard<std::mutex> lock(m);
       running = false;
-      startRequested = false;
       return false;
+    };
+
+    AVCaptureDevice *dev = deviceForIndex(deviceIndex);
+    if (!dev) {
+      std::fprintf(stderr, "[pd] No camera device for index %d.\n", deviceIndex);
+      return failStart();
     }
 
     std::fprintf(stderr, "[pd] Using device index %d: %s (uniqueID=%s)\n", deviceIndex, dev.localizedName.UTF8String,
@@ -269,10 +254,7 @@ bool CameraSource::Impl::startAuthorized() {
     if (!newInput || err) {
       std::fprintf(stderr, "[pd] Failed to create device input: %s\n", err.localizedDescription.UTF8String);
       [newSession commitConfiguration];
-      std::lock_guard<std::mutex> lock(m);
-      running = false;
-      startRequested = false;
-      return false;
+      return failStart();
     }
 
     if ([newSession canAddInput:newInput])
@@ -280,10 +262,7 @@ bool CameraSource::Impl::startAuthorized() {
     else {
       std::fprintf(stderr, "[pd] Session cannot add input.\n");
       [newSession commitConfiguration];
-      std::lock_guard<std::mutex> lock(m);
-      running = false;
-      startRequested = false;
-      return false;
+      return failStart();
     }
 
     AVCaptureVideoDataOutput *newOutput = [[AVCaptureVideoDataOutput alloc] init];
@@ -315,10 +294,7 @@ bool CameraSource::Impl::startAuthorized() {
       newDelegate.ctx = nullptr;
       newDelegate.onSample = nullptr;
 
-      std::lock_guard<std::mutex> lock(m);
-      running = false;
-      startRequested = false;
-      return false;
+      return failStart();
     }
 
     // Ensure connection enabled (usually is, but make it explicit).
@@ -329,19 +305,29 @@ bool CameraSource::Impl::startAuthorized() {
     [newSession commitConfiguration];
 
     // Commit state
+    bool shouldStart = true;
     {
       std::lock_guard<std::mutex> lock(m);
-      session = newSession;
-      input = newInput;
-      output = newOutput;
-      captureQueue = newQueue;
-      delegate = newDelegate;
-      running = true;
-      startRequested = false;
+      if (shutdownRequested) {
+        shouldStart = false;
+      } else {
+        session = newSession;
+        output = newOutput;
+        captureQueue = newQueue;
+        delegate = newDelegate;
+        running = true;
+      }
     }
 
-    // Start running asynchronously
-    auto aliveToken = alive;
+    if (!shouldStart) {
+      [newOutput setSampleBufferDelegate:nil queue:nullptr];
+      newDelegate.ctx = nullptr;
+      newDelegate.onSample = nullptr;
+      return failStart();
+    }
+
+    // Start running asynchronously.
+    auto aliveToken = lifetimeAlive;
     AVCaptureSession *sessToStart = newSession;
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -359,6 +345,8 @@ bool CameraSource::Impl::startAuthorized() {
 }
 
 void CameraSource::Impl::stop() noexcept {
+  lifetimeAlive->store(false, std::memory_order_relaxed);
+
   AVCaptureSession *oldSession = nil;
   AVCaptureVideoDataOutput *oldOutput = nil;
   PDFrameDelegate *oldDelegate = nil;
@@ -373,7 +361,7 @@ void CameraSource::Impl::stop() noexcept {
       latest.seq = 0;
     }
 
-    startRequested = false;
+    shutdownRequested = true;
 
     if (!running && session == nil && output == nil && delegate == nil)
       return;
@@ -385,7 +373,6 @@ void CameraSource::Impl::stop() noexcept {
     oldQueue = captureQueue;
 
     delegate = nil;
-    input = nil;
     output = nil;
     session = nil;
     captureQueue = nullptr;
@@ -408,11 +395,7 @@ void CameraSource::Impl::stop() noexcept {
     }
 
     if (oldSession) {
-      dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        @autoreleasepool {
-          [oldSession stopRunning];
-        }
-      });
+      [oldSession stopRunning];
     }
   }
 }
@@ -434,12 +417,6 @@ void CameraSource::Impl::onSample(CMSampleBufferRef sample) {
     ReleasePB(latest.pb);
   latest.pb = pb;
   latest.seq += 1;
-
-  // rate-limited log
-  if ((++logCounter % 120) == 0) {
-    std::fprintf(stderr, "[pd] receiving frames on device %d... seq=%llu\n", deviceIndex,
-                 (unsigned long long)latest.seq);
-  }
 }
 
 bool CameraSource::Impl::readLatest(ImageFrame &out) {
