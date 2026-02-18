@@ -5,13 +5,10 @@
 #import <CoreVideo/CoreVideo.h>
 #import <Metal/Metal.h>
 
-#include <opencv2/core.hpp>
-#include <opencv2/video/tracking.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
+#include <cstring>
 #include <limits>
 #include <vector>
 
@@ -23,71 +20,185 @@ constexpr const char *kDetectorShaders = R"metal(
 #include <metal_stdlib>
 using namespace metal;
 
-struct BGParams {
-  float threshold;
-  float learningRate;
-  float foregroundUpdateScale;
+struct MOG2Params {
+  int frameWidth;
+  int frameHeight;
+  int scaledWidth;
+  int scaledHeight;
+  int nMixtures;
+  float alphaT;
+  float alpha1;
+  float prune;
+  float Tb;
+  float TB;
+  float Tg;
+  float varInit;
+  float varMin;
+  float varMax;
+  float tau;
+  uint detectShadows;
 };
 
-kernel void initializeBackground(texture2d<float, access::read> inputTex [[texture(0)]],
-                                 texture2d<float, access::write> backgroundTex [[texture(1)]],
-                                 texture2d<float, access::write> maskTex [[texture(2)]],
-                                 uint2 gid [[thread_position_in_grid]]) {
-  if (gid.x >= inputTex.get_width() || gid.y >= inputTex.get_height())
-    return;
+struct MorphParams {
+  int radius;
+};
 
-  const float4 rgba = inputTex.read(gid);
-  const float luma = dot(rgba.rgb, float3(0.299f, 0.587f, 0.114f));
-  backgroundTex.write(float4(luma, 0.0f, 0.0f, 1.0f), gid);
-  maskTex.write(float4(0.0f), gid);
+inline void swapMode(device float4 *means,
+                     device float *weights,
+                     device float *variances,
+                     int idxA,
+                     int idxB) {
+  const float4 m = means[idxA];
+  means[idxA] = means[idxB];
+  means[idxB] = m;
+  const float w = weights[idxA];
+  weights[idxA] = weights[idxB];
+  weights[idxB] = w;
+  const float v = variances[idxA];
+  variances[idxA] = variances[idxB];
+  variances[idxB] = v;
 }
 
-kernel void subtractBackground(texture2d<float, access::read> inputTex [[texture(0)]],
-                               texture2d<float, access::read_write> backgroundTex [[texture(1)]],
-                               texture2d<float, access::write> maskTex [[texture(2)]],
-                               constant BGParams &params [[buffer(0)]],
-                               uint2 gid [[thread_position_in_grid]]) {
-  if (gid.x >= inputTex.get_width() || gid.y >= inputTex.get_height())
-    return;
+inline bool detectShadowGMM(float3 data,
+                            int nmodes,
+                            int base,
+                            device const float4 *means,
+                            device const float *weights,
+                            device const float *variances,
+                            float Tb,
+                            float TB,
+                            float tau) {
+  float tWeight = 0.0f;
+  for (int mode = 0; mode < nmodes; ++mode) {
+    const float3 mean = means[base + mode].xyz;
+    const float numerator = dot(data, mean);
+    const float denominator = dot(mean, mean);
 
-  const float4 rgba = inputTex.read(gid);
-  const float luma = dot(rgba.rgb, float3(0.299f, 0.587f, 0.114f));
-  const float bg = backgroundTex.read(gid).r;
-  const float diff = fabs(luma - bg);
+    if (denominator > 1e-6f && numerator <= denominator && numerator >= tau * denominator) {
+      const float a = numerator / denominator;
+      const float3 d = a * mean - data;
+      const float dist2a = dot(d, d);
+      if (dist2a < Tb * variances[base + mode] * a * a)
+        return true;
+    }
 
-  const float fg = (diff > params.threshold) ? 1.0f : 0.0f;
-  const float fgScale = mix(params.foregroundUpdateScale, 1.0f, 1.0f - fg);
-  const float lr = params.learningRate * fgScale;
-  const float nextBg = mix(bg, luma, lr);
-
-  backgroundTex.write(float4(nextBg, 0.0f, 0.0f, 1.0f), gid);
-  maskTex.write(float4(fg, 0.0f, 0.0f, 1.0f), gid);
+    tWeight += weights[base + mode];
+    if (tWeight > TB)
+      return false;
+  }
+  return false;
 }
 
-kernel void erode3x3(texture2d<float, access::read> inputMask [[texture(0)]],
-                     texture2d<float, access::write> outputMask [[texture(1)]],
-                     uint2 gid [[thread_position_in_grid]]) {
-  if (gid.x >= inputMask.get_width() || gid.y >= inputMask.get_height())
+kernel void mog2Update(texture2d<float, access::read> inputTex [[texture(0)]],
+                       texture2d<float, access::write> maskTex [[texture(1)]],
+                       device float4 *means [[buffer(0)]],
+                       device float *weights [[buffer(1)]],
+                       device float *variances [[buffer(2)]],
+                       device uchar *modesUsed [[buffer(3)]],
+                       constant MOG2Params &params [[buffer(4)]],
+                             uint2 gid [[thread_position_in_grid]]) {
+  if (gid.x >= uint(params.scaledWidth) || gid.y >= uint(params.scaledHeight))
     return;
 
-  const int width = int(inputMask.get_width());
-  const int height = int(inputMask.get_height());
-  const int x = int(gid.x);
-  const int y = int(gid.y);
+  const float inW = float(params.frameWidth);
+  const float inH = float(params.frameHeight);
+  const float outW = float(params.scaledWidth);
+  const float outH = float(params.scaledHeight);
+  const int sx = clamp(int(((float(gid.x) + 0.5f) * inW) / outW), 0, params.frameWidth - 1);
+  const int sy = clamp(int(((float(gid.y) + 0.5f) * inH) / outH), 0, params.frameHeight - 1);
+  const float3 data = inputTex.read(uint2(uint(sx), uint(sy))).rgb * 255.0f;
 
-  float v = 1.0f;
-  for (int dy = -1; dy <= 1; ++dy) {
-    const int sy = clamp(y + dy, 0, height - 1);
-    for (int dx = -1; dx <= 1; ++dx) {
-      const int sx = clamp(x + dx, 0, width - 1);
-      v = min(v, inputMask.read(uint2(uint(sx), uint(sy))).r);
+  const int pixelIndex = int(gid.y) * params.scaledWidth + int(gid.x);
+  const int base = pixelIndex * params.nMixtures;
+  int nmodes = clamp(int(modesUsed[pixelIndex]), 0, params.nMixtures);
+
+  bool background = false;
+  bool fitsPDF = false;
+  float totalWeight = 0.0f;
+
+  for (int mode = 0; mode < nmodes; ++mode) {
+    const int idx = base + mode;
+    float weight = params.alpha1 * weights[idx] + params.prune;
+    int swapCount = 0;
+
+    if (!fitsPDF) {
+      const float3 mean = means[idx].xyz;
+      float variance = variances[idx];
+      const float3 dData = mean - data;
+      const float dist2 = dot(dData, dData);
+
+      if (totalWeight < params.TB && dist2 < params.Tb * variance)
+        background = true;
+
+      if (dist2 < params.Tg * variance) {
+        fitsPDF = true;
+        weight += params.alphaT;
+
+        const float k = params.alphaT / weight;
+        const float3 nextMean = mean - k * dData;
+        variance += k * (dist2 - variance);
+        variance = clamp(variance, params.varMin, params.varMax);
+
+        means[idx] = float4(nextMean, 0.0f);
+        variances[idx] = variance;
+
+        for (int i = mode; i > 0; --i) {
+          const int prevIdx = base + i - 1;
+          if (weight < weights[prevIdx])
+            break;
+          swapMode(means, weights, variances, base + i, prevIdx);
+          ++swapCount;
+        }
+      }
+    }
+
+    if (weight < -params.prune) {
+      weight = 0.0f;
+      nmodes--;
+    }
+
+    weights[base + mode - swapCount] = weight;
+    totalWeight += weight;
+  }
+
+  const float invWeight = (fabs(totalWeight) > 1e-6f) ? (1.0f / totalWeight) : 0.0f;
+  for (int mode = 0; mode < nmodes; ++mode)
+    weights[base + mode] *= invWeight;
+
+  if (!fitsPDF && params.alphaT > 0.0f) {
+    int mode = (nmodes == params.nMixtures) ? (params.nMixtures - 1) : nmodes++;
+    const int idx = base + mode;
+    if (nmodes == 1) {
+      weights[idx] = 1.0f;
+    } else {
+      weights[idx] = params.alphaT;
+      for (int i = 0; i < (nmodes - 1); ++i)
+        weights[base + i] *= params.alpha1;
+    }
+    means[idx] = float4(data, 0.0f);
+    variances[idx] = params.varInit;
+
+    for (int i = nmodes - 1; i > 0; --i) {
+      if (params.alphaT < weights[base + i - 1])
+        break;
+      swapMode(means, weights, variances, base + i, base + i - 1);
     }
   }
-  outputMask.write(float4(v, 0.0f, 0.0f, 1.0f), gid);
+
+  modesUsed[pixelIndex] = uchar(clamp(nmodes, 0, params.nMixtures));
+
+  float foreground = background ? 0.0f : 1.0f;
+  if (foreground > 0.5f && params.detectShadows != 0 &&
+      detectShadowGMM(data, nmodes, base, means, weights, variances, params.Tb, params.TB, params.tau)) {
+    foreground = 0.0f;
+  }
+
+  maskTex.write(float4(foreground, 0.0f, 0.0f, 1.0f), gid);
 }
 
-kernel void dilate3x3(texture2d<float, access::read> inputMask [[texture(0)]],
+kernel void dilateNxN(texture2d<float, access::read> inputMask [[texture(0)]],
                       texture2d<float, access::write> outputMask [[texture(1)]],
+                      constant MorphParams &params [[buffer(0)]],
                       uint2 gid [[thread_position_in_grid]]) {
   if (gid.x >= inputMask.get_width() || gid.y >= inputMask.get_height())
     return;
@@ -96,29 +207,74 @@ kernel void dilate3x3(texture2d<float, access::read> inputMask [[texture(0)]],
   const int height = int(inputMask.get_height());
   const int x = int(gid.x);
   const int y = int(gid.y);
+  const int r = max(0, params.radius);
 
   float v = 0.0f;
-  for (int dy = -1; dy <= 1; ++dy) {
+  for (int dy = -r; dy <= r; ++dy) {
     const int sy = clamp(y + dy, 0, height - 1);
-    for (int dx = -1; dx <= 1; ++dx) {
+    for (int dx = -r; dx <= r; ++dx) {
       const int sx = clamp(x + dx, 0, width - 1);
       v = max(v, inputMask.read(uint2(uint(sx), uint(sy))).r);
     }
   }
   outputMask.write(float4(v, 0.0f, 0.0f, 1.0f), gid);
 }
+
+kernel void erodeNxN(texture2d<float, access::read> inputMask [[texture(0)]],
+                     texture2d<float, access::write> outputMask [[texture(1)]],
+                     constant MorphParams &params [[buffer(0)]],
+                     uint2 gid [[thread_position_in_grid]]) {
+  if (gid.x >= inputMask.get_width() || gid.y >= inputMask.get_height())
+    return;
+
+  const int width = int(inputMask.get_width());
+  const int height = int(inputMask.get_height());
+  const int x = int(gid.x);
+  const int y = int(gid.y);
+  const int r = max(0, params.radius);
+
+  float v = 1.0f;
+  for (int dy = -r; dy <= r; ++dy) {
+    const int sy = clamp(y + dy, 0, height - 1);
+    for (int dx = -r; dx <= r; ++dx) {
+      const int sx = clamp(x + dx, 0, width - 1);
+      v = min(v, inputMask.read(uint2(uint(sx), uint(sy))).r);
+    }
+  }
+  outputMask.write(float4(v, 0.0f, 0.0f, 1.0f), gid);
+}
 )metal";
 
-struct BGParams {
-  float threshold = 0.16f;
-  float learningRate = 0.02f;
-  float foregroundUpdateScale = 0.1f;
+struct MOG2Params {
+  int frameWidth = 0;
+  int frameHeight = 0;
+  int scaledWidth = 0;
+  int scaledHeight = 0;
+  int nMixtures = 5;
+  float alphaT = 0.0f;
+  float alpha1 = 1.0f;
+  float prune = 0.0f;
+  float Tb = 16.0f;
+  float TB = 0.7f;
+  float Tg = 9.0f;
+  float varInit = 15.0f;
+  float varMin = 4.0f;
+  float varMax = 75.0f;
+  float tau = 0.5f;
+  uint32_t detectShadows = 0;
 };
 
-struct RawCandidate {
-  cv::Point2f center;
-  int area = 0;
+struct MorphParams {
+  int radius = 2;
 };
+
+constexpr int kMog2Mixtures = 5;
+constexpr float kMog2VarThresholdGen = 9.0f;
+constexpr float kMog2VarInit = 15.0f;
+constexpr float kMog2VarMin = 4.0f;
+constexpr float kMog2VarMax = 75.0f;
+constexpr float kMog2ComplexityReduction = 0.05f;
+constexpr float kMog2ShadowTau = 0.5f;
 
 inline int clampInt(int v, int lo, int hi) {
   return std::max(lo, std::min(v, hi));
@@ -128,20 +284,29 @@ inline float clampFloat(float v, float lo, float hi) {
   return std::max(lo, std::min(v, hi));
 }
 
-inline float distanceSquared(const cv::Point2f &a, const cv::Point2f &b) {
-  const float dx = a.x - b.x;
-  const float dy = a.y - b.y;
-  return dx * dx + dy * dy;
-}
-
 inline MTLSize makeThreadgroupSize() {
   return MTLSizeMake(16, 16, 1);
 }
 
 inline MTLSize makeThreadgroupCount(int width, int height, MTLSize tgSize) {
-  const NSUInteger groupsX = (static_cast<NSUInteger>(width) + tgSize.width - 1) / tgSize.width;
-  const NSUInteger groupsY = (static_cast<NSUInteger>(height) + tgSize.height - 1) / tgSize.height;
-  return MTLSizeMake(groupsX, groupsY, 1);
+  const NSUInteger gx = (static_cast<NSUInteger>(width) + tgSize.width - 1) / tgSize.width;
+  const NSUInteger gy = (static_cast<NSUInteger>(height) + tgSize.height - 1) / tgSize.height;
+  return MTLSizeMake(gx, gy, 1);
+}
+
+struct RectI {
+  int x = 0;
+  int y = 0;
+  int width = 0;
+  int height = 0;
+};
+
+inline RectI clampRectToFrame(const RectI &r, int width, int height) {
+  const int x0 = clampInt(r.x, 0, width);
+  const int y0 = clampInt(r.y, 0, height);
+  const int x1 = clampInt(r.x + r.width, 0, width);
+  const int y1 = clampInt(r.y + r.height, 0, height);
+  return RectI{x0, y0, std::max(0, x1 - x0), std::max(0, y1 - y0)};
 }
 
 void drawPointIntoBGRA(uint8_t *base, int width, int height, int stride, const Pixel &point, int radius) {
@@ -150,7 +315,6 @@ void drawPointIntoBGRA(uint8_t *base, int width, int height, int stride, const P
 
   const int r = std::max(1, radius);
   const int r2 = r * r;
-
   const int minY = clampInt(point.y - r, 0, height - 1);
   const int maxY = clampInt(point.y + r, 0, height - 1);
   const int minX = clampInt(point.x - r, 0, width - 1);
@@ -163,7 +327,6 @@ void drawPointIntoBGRA(uint8_t *base, int width, int height, int stride, const P
       const int dy = y - point.y;
       if (dx * dx + dy * dy > r2)
         continue;
-
       uint8_t *px = row + x * 4;
       px[0] = 0;   // B
       px[1] = 0;   // G
@@ -173,121 +336,110 @@ void drawPointIntoBGRA(uint8_t *base, int width, int height, int stride, const P
   }
 }
 
-class Track {
-public:
-  Track(int trackId, const cv::Point2f &start, float smoothing) : id(trackId), smoothed(start) {
-    kf.init(4, 2, 0, CV_32F);
-    kf.transitionMatrix = (cv::Mat_<float>(4, 4) << 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-                           1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
-    kf.measurementMatrix =
-        (cv::Mat_<float>(2, 4) << 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
-    kf.processNoiseCov = cv::Mat::eye(4, 4, CV_32F) * 1e-2f;
-    kf.processNoiseCov.at<float>(2, 2) = 5e-2f;
-    kf.processNoiseCov.at<float>(3, 3) = 5e-2f;
-    kf.measurementNoiseCov = cv::Mat::eye(2, 2, CV_32F) * 9.0f;
-    kf.errorCovPost = cv::Mat::eye(4, 4, CV_32F) * 25.0f;
+void drawRectIntoBGRA(uint8_t *base, int width, int height, int stride, RectI rect, int thickness) {
+  if (!base || width <= 0 || height <= 0 || stride <= 0)
+    return;
+  rect = clampRectToFrame(rect, width, height);
+  if (rect.width <= 0 || rect.height <= 0)
+    return;
 
-    kf.statePost.at<float>(0) = start.x;
-    kf.statePost.at<float>(1) = start.y;
-    kf.statePost.at<float>(2) = 0.0f;
-    kf.statePost.at<float>(3) = 0.0f;
+  const int t = std::max(1, thickness);
+  const int x0 = rect.x;
+  const int y0 = rect.y;
+  const int x1 = rect.x + rect.width - 1;
+  const int y1 = rect.y + rect.height - 1;
 
-    smoothAlpha = clampFloat(smoothing, 0.0f, 1.0f);
+  auto drawHorizontal = [&](int y) {
+    if (y < 0 || y >= height)
+      return;
+    uint8_t *row = base + y * stride;
+    const int start = clampInt(x0, 0, width - 1);
+    const int end = clampInt(x1, 0, width - 1);
+    for (int x = start; x <= end; ++x) {
+      uint8_t *px = row + x * 4;
+      px[0] = 0;
+      px[1] = 255; // green
+      px[2] = 0;
+      px[3] = 255;
+    }
+  };
+
+  auto drawVertical = [&](int x) {
+    if (x < 0 || x >= width)
+      return;
+    const int start = clampInt(y0, 0, height - 1);
+    const int end = clampInt(y1, 0, height - 1);
+    for (int y = start; y <= end; ++y) {
+      uint8_t *row = base + y * stride;
+      uint8_t *px = row + x * 4;
+      px[0] = 0;
+      px[1] = 255;
+      px[2] = 0;
+      px[3] = 255;
+    }
+  };
+
+  for (int i = 0; i < t; ++i) {
+    drawHorizontal(y0 + i);
+    drawHorizontal(y1 - i);
+    drawVertical(x0 + i);
+    drawVertical(x1 - i);
+  }
+}
+
+struct LockedFrameView {
+  explicit LockedFrameView(CVPixelBufferRef pb, CVPixelBufferLockFlags flags) : _pb(pb), _flags(flags) {
+    if (!_pb)
+      return;
+    if (CVPixelBufferGetPixelFormatType(_pb) != kCVPixelFormatType_32BGRA)
+      return;
+
+    CVPixelBufferLockBaseAddress(_pb, _flags);
+    _locked = true;
+
+    void *base = CVPixelBufferGetBaseAddress(_pb);
+    if (!base)
+      return;
+
+    _width = static_cast<int>(CVPixelBufferGetWidth(_pb));
+    _height = static_cast<int>(CVPixelBufferGetHeight(_pb));
+    _stride = static_cast<int>(CVPixelBufferGetBytesPerRow(_pb));
+    if (_width <= 0 || _height <= 0 || _stride < _width * 4)
+      return;
+
+    _base = static_cast<uint8_t *>(base);
+    _valid = true;
   }
 
-  cv::Point2f predict(float gravityY) {
-    cv::Mat prediction = kf.predict();
-    prediction.at<float>(1) += 0.5f * gravityY;
-    prediction.at<float>(3) += gravityY;
-    kf.statePre.at<float>(1) = prediction.at<float>(1);
-    kf.statePre.at<float>(3) = prediction.at<float>(3);
-    predicted = cv::Point2f(prediction.at<float>(0), prediction.at<float>(1));
-    return predicted;
+  ~LockedFrameView() {
+    if (_locked)
+      CVPixelBufferUnlockBaseAddress(_pb, _flags);
   }
 
-  void correct(const cv::Point2f &measurement) {
-    cv::Mat z(2, 1, CV_32F);
-    z.at<float>(0) = measurement.x;
-    z.at<float>(1) = measurement.y;
-    cv::Mat corrected = kf.correct(z);
-    const cv::Point2f correctedPt(corrected.at<float>(0), corrected.at<float>(1));
-    smoothed = smoothAlpha * correctedPt + (1.0f - smoothAlpha) * smoothed;
-  }
+  LockedFrameView(const LockedFrameView &) = delete;
+  LockedFrameView &operator=(const LockedFrameView &) = delete;
 
-  Pixel pixel() const {
-    Pixel p;
-    p.x = static_cast<int>(std::lround(smoothed.x));
-    p.y = static_cast<int>(std::lround(smoothed.y));
-    return p;
-  }
+  bool valid() const { return _valid; }
+  uint8_t *base() const { return _base; }
+  int width() const { return _width; }
+  int height() const { return _height; }
+  int stride() const { return _stride; }
 
-  int id = 0;
-  int hits = 1;
-  int misses = 0;
-  cv::Point2f predicted = {};
-  cv::Point2f smoothed = {};
-  float smoothAlpha = 0.65f;
-  cv::KalmanFilter kf;
+private:
+  CVPixelBufferRef _pb = nullptr;
+  CVPixelBufferLockFlags _flags = 0;
+  bool _locked = false;
+  bool _valid = false;
+  uint8_t *_base = nullptr;
+  int _width = 0;
+  int _height = 0;
+  int _stride = 0;
 };
 
 } // namespace
 
 struct Detector::Impl {
-  explicit Impl(const DetectorConfig &cfg) : config(cfg) {
-    config.foregroundThreshold = clampFloat(config.foregroundThreshold, 0.0f, 1.0f);
-    config.backgroundLearningRate = clampFloat(config.backgroundLearningRate, 0.0f, 1.0f);
-    config.foregroundUpdateScale = clampFloat(config.foregroundUpdateScale, 0.0f, 1.0f);
-
-    config.morphologyOpenIterations = std::max(0, config.morphologyOpenIterations);
-    config.morphologyCloseIterations = std::max(0, config.morphologyCloseIterations);
-    config.warmupFrames = std::max(0, config.warmupFrames);
-
-    config.minBlobArea = std::max(1, config.minBlobArea);
-    config.maxBlobArea = std::max(config.minBlobArea, config.maxBlobArea);
-    config.maxBlobAspectRatio = std::max(1.0f, config.maxBlobAspectRatio);
-    config.minBlobFillRatio = clampFloat(config.minBlobFillRatio, 0.0f, 1.0f);
-    config.borderIgnorePixels = std::max(0, config.borderIgnorePixels);
-    config.maxRawDetections = std::max(1, config.maxRawDetections);
-
-    config.maxAssociationDistancePx = std::max(1.0f, config.maxAssociationDistancePx);
-    config.minConfirmedHits = std::max(1, config.minConfirmedHits);
-    config.maxMissedFrames = std::max(0, config.maxMissedFrames);
-    config.smoothingAlpha = clampFloat(config.smoothingAlpha, 0.0f, 1.0f);
-
-    device = MTLCreateSystemDefaultDevice();
-    if (!device) {
-      std::fprintf(stderr, "[pd::Detector] Metal device unavailable.\n");
-      return;
-    }
-
-    queue = [device newCommandQueue];
-    if (!queue) {
-      std::fprintf(stderr, "[pd::Detector] Failed to create Metal command queue.\n");
-      return;
-    }
-
-    NSError *error = nil;
-    NSString *src = [NSString stringWithUTF8String:kDetectorShaders];
-    library = [device newLibraryWithSource:src options:nil error:&error];
-    if (!library) {
-      std::fprintf(stderr, "[pd::Detector] Failed to compile Metal shaders: %s\n",
-                   error.localizedDescription.UTF8String);
-      return;
-    }
-
-    initPSO = createPSO(@"initializeBackground");
-    bgSubPSO = createPSO(@"subtractBackground");
-    erodePSO = createPSO(@"erode3x3");
-    dilatePSO = createPSO(@"dilate3x3");
-    if (!initPSO || !bgSubPSO || !erodePSO || !dilatePSO)
-      return;
-
-    const CVReturn cacheResult = CVMetalTextureCacheCreate(kCFAllocatorDefault, nullptr, device, nullptr, &textureCache);
-    if (cacheResult != kCVReturnSuccess) {
-      textureCache = nullptr;
-      std::fprintf(stderr, "[pd::Detector] Failed to create CVMetalTextureCache (%d).\n", int(cacheResult));
-    }
-  }
+  explicit Impl(const DetectorConfig &cfg) { initialize(cfg); }
 
   ~Impl() {
     if (textureCache) {
@@ -297,9 +449,73 @@ struct Detector::Impl {
     }
   }
 
+  void initialize(const DetectorConfig &cfg) {
+    applyConfig(cfg);
+
+    device = MTLCreateSystemDefaultDevice();
+    if (!device)
+      return;
+
+    queue = [device newCommandQueue];
+    if (!queue)
+      return;
+
+    NSError *error = nil;
+    NSString *src = [NSString stringWithUTF8String:kDetectorShaders];
+    library = [device newLibraryWithSource:src options:nil error:&error];
+    if (!library)
+      return;
+
+    mog2PSO = createPSO(@"mog2Update");
+    dilatePSO = createPSO(@"dilateNxN");
+    erodePSO = createPSO(@"erodeNxN");
+
+    if (!mog2PSO || !dilatePSO || !erodePSO)
+      return;
+
+    const CVReturn cacheResult = CVMetalTextureCacheCreate(kCFAllocatorDefault, nullptr, device, nullptr, &textureCache);
+    if (cacheResult != kCVReturnSuccess)
+      textureCache = nullptr;
+  }
+
+  void applyConfig(const DetectorConfig &cfg) {
+    config = cfg;
+    if (config.imscale <= 0.0)
+      config.imscale = 1.0;
+    config.bgHistory = std::max(1, config.bgHistory);
+    config.varThreshold = std::max(0.0, config.varThreshold);
+    config.bgRatio = clampFloat(static_cast<float>(config.bgRatio), 0.0f, 1.0f);
+    config.closeKernelSize = std::max(1, config.closeKernelSize);
+    if ((config.closeKernelSize % 2) == 0)
+      config.closeKernelSize += 1;
+    config.closeIterations = std::max(0, config.closeIterations);
+    config.connectivity = (config.connectivity == 4 ? 4 : 8);
+    config.minArea = std::max(1, config.minArea);
+    config.maxProjectiles = std::max(1, config.maxProjectiles);
+    config.maxAspect = std::max(config.maxAspect, config.minAspect);
+
+    mog2Params.nMixtures = kMog2Mixtures;
+    mog2Params.Tb = static_cast<float>(config.varThreshold);
+    mog2Params.TB = clampFloat(static_cast<float>(config.bgRatio), 0.0f, 1.0f);
+    mog2Params.Tg = kMog2VarThresholdGen;
+    mog2Params.varInit = kMog2VarInit;
+    mog2Params.varMin = kMog2VarMin;
+    mog2Params.varMax = kMog2VarMax;
+    mog2Params.tau = kMog2ShadowTau;
+    mog2Params.detectShadows = config.detectShadows ? 1u : 0u;
+    morphParams.radius = config.closeKernelSize / 2;
+
+    modelFrameCount = 0;
+    clearMog2State();
+    frameCounter = 0;
+    last.clear();
+  }
+
   std::vector<Pixel> process(const ImageFrame &frame) {
+    last.clear();
+
     CVPixelBufferRef pb = frame.pixelBuffer();
-    if (!pb || !device || !queue || !textureCache || !initPSO || !bgSubPSO || !erodePSO || !dilatePSO)
+    if (!pb || !device || !queue || !textureCache || !mog2PSO || !dilatePSO || !erodePSO)
       return {};
     if (CVPixelBufferGetPixelFormatType(pb) != kCVPixelFormatType_32BGRA)
       return {};
@@ -308,6 +524,9 @@ struct Detector::Impl {
     frameHeight = static_cast<int>(CVPixelBufferGetHeight(pb));
     if (frameWidth <= 0 || frameHeight <= 0)
       return {};
+
+    scaledWidth = std::max(1, static_cast<int>(std::lround(frameWidth * config.imscale)));
+    scaledHeight = std::max(1, static_cast<int>(std::lround(frameHeight * config.imscale)));
 
     CVMetalTextureRef cvInputTex = nullptr;
     const CVReturn cvResult = CVMetalTextureCacheCreateTextureFromImage(
@@ -321,10 +540,22 @@ struct Detector::Impl {
       return {};
     }
 
-    if (!ensureWorkingTextures(frameWidth, frameHeight)) {
+    if (!ensureWorkingState()) {
       CFRelease(cvInputTex);
       return {};
     }
+
+    ++modelFrameCount;
+    const uint64_t lrDenom =
+        std::min<uint64_t>(2ULL * std::max<uint64_t>(1ULL, modelFrameCount), static_cast<uint64_t>(config.bgHistory));
+    MOG2Params frameParams = mog2Params;
+    frameParams.frameWidth = frameWidth;
+    frameParams.frameHeight = frameHeight;
+    frameParams.scaledWidth = scaledWidth;
+    frameParams.scaledHeight = scaledHeight;
+    frameParams.alphaT = 1.0f / static_cast<float>(std::max<uint64_t>(1ULL, lrDenom));
+    frameParams.alpha1 = 1.0f - frameParams.alphaT;
+    frameParams.prune = -frameParams.alphaT * kMog2ComplexityReduction;
 
     id<MTLCommandBuffer> cmd = [queue commandBuffer];
     if (!cmd) {
@@ -333,42 +564,40 @@ struct Detector::Impl {
     }
 
     const MTLSize tgSize = makeThreadgroupSize();
-    const MTLSize tgCount = makeThreadgroupCount(frameWidth, frameHeight, tgSize);
+    const MTLSize tgCount = makeThreadgroupCount(scaledWidth, scaledHeight, tgSize);
 
-    if (!backgroundInitialized) {
+    {
       id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
-      [enc setComputePipelineState:initPSO];
+      [enc setComputePipelineState:mog2PSO];
       [enc setTexture:inputTexture atIndex:0];
-      [enc setTexture:backgroundTexture atIndex:1];
-      [enc setTexture:maskTexture atIndex:2];
-      [enc dispatchThreadgroups:tgCount threadsPerThreadgroup:tgSize];
-      [enc endEncoding];
-      backgroundInitialized = true;
-      warmupCounter = 0;
-    } else {
-      id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
-      [enc setComputePipelineState:bgSubPSO];
-      [enc setTexture:inputTexture atIndex:0];
-      [enc setTexture:backgroundTexture atIndex:1];
-      [enc setTexture:maskTexture atIndex:2];
-
-      BGParams params;
-      params.threshold = config.foregroundThreshold;
-      params.learningRate = config.backgroundLearningRate;
-      params.foregroundUpdateScale = config.foregroundUpdateScale;
-      [enc setBytes:&params length:sizeof(params) atIndex:0];
+      [enc setTexture:maskTexture atIndex:1];
+      [enc setBuffer:modeMeansBuffer offset:0 atIndex:0];
+      [enc setBuffer:modeWeightsBuffer offset:0 atIndex:1];
+      [enc setBuffer:modeVariancesBuffer offset:0 atIndex:2];
+      [enc setBuffer:modesUsedBuffer offset:0 atIndex:3];
+      [enc setBytes:&frameParams length:sizeof(frameParams) atIndex:4];
       [enc dispatchThreadgroups:tgCount threadsPerThreadgroup:tgSize];
       [enc endEncoding];
     }
 
-    for (int i = 0; i < config.morphologyOpenIterations; ++i) {
-      runMorphStep(cmd, erodePSO, maskTexture, tempMaskTexture, tgCount, tgSize);
-      runMorphStep(cmd, dilatePSO, tempMaskTexture, maskTexture, tgCount, tgSize);
-    }
+    if (config.closeIterations > 0 && morphParams.radius > 0) {
+      for (int i = 0; i < config.closeIterations; ++i) {
+        id<MTLComputeCommandEncoder> dilateEnc = [cmd computeCommandEncoder];
+        [dilateEnc setComputePipelineState:dilatePSO];
+        [dilateEnc setTexture:maskTexture atIndex:0];
+        [dilateEnc setTexture:tempMaskTexture atIndex:1];
+        [dilateEnc setBytes:&morphParams length:sizeof(morphParams) atIndex:0];
+        [dilateEnc dispatchThreadgroups:tgCount threadsPerThreadgroup:tgSize];
+        [dilateEnc endEncoding];
 
-    for (int i = 0; i < config.morphologyCloseIterations; ++i) {
-      runMorphStep(cmd, dilatePSO, maskTexture, tempMaskTexture, tgCount, tgSize);
-      runMorphStep(cmd, erodePSO, tempMaskTexture, maskTexture, tgCount, tgSize);
+        id<MTLComputeCommandEncoder> erodeEnc = [cmd computeCommandEncoder];
+        [erodeEnc setComputePipelineState:erodePSO];
+        [erodeEnc setTexture:tempMaskTexture atIndex:0];
+        [erodeEnc setTexture:maskTexture atIndex:1];
+        [erodeEnc setBytes:&morphParams length:sizeof(morphParams) atIndex:0];
+        [erodeEnc dispatchThreadgroups:tgCount threadsPerThreadgroup:tgSize];
+        [erodeEnc endEncoding];
+      }
     }
 
     [cmd commit];
@@ -378,270 +607,222 @@ struct Detector::Impl {
     if (cmd.status != MTLCommandBufferStatusCompleted)
       return {};
 
-    if (warmupCounter < config.warmupFrames) {
-      ++warmupCounter;
-      return advanceTracks({});
-    }
-
-    const size_t required = static_cast<size_t>(frameWidth) * static_cast<size_t>(frameHeight);
+    const size_t required = static_cast<size_t>(scaledWidth) * static_cast<size_t>(scaledHeight);
     cpuMask.resize(required);
-
     const MTLRegion region =
-        MTLRegionMake2D(0, 0, static_cast<NSUInteger>(frameWidth), static_cast<NSUInteger>(frameHeight));
-    [maskTexture getBytes:cpuMask.data() bytesPerRow:static_cast<NSUInteger>(frameWidth) fromRegion:region mipmapLevel:0];
+        MTLRegionMake2D(0, 0, static_cast<NSUInteger>(scaledWidth), static_cast<NSUInteger>(scaledHeight));
+    [maskTexture getBytes:cpuMask.data() bytesPerRow:static_cast<NSUInteger>(scaledWidth) fromRegion:region mipmapLevel:0];
 
-    const std::vector<RawCandidate> candidates = extractRawCandidates();
-    return advanceTracks(candidates);
+    extractProjectiles();
+
+    std::vector<Pixel> out;
+    out.reserve(last.size());
+    for (const ProjectileFrame &p : last)
+      out.push_back(p.center);
+    return out;
   }
+
+  const std::vector<ProjectileFrame> &lastProjectiles() const { return last; }
 
 private:
   id<MTLComputePipelineState> createPSO(NSString *name) {
     if (!library)
       return nil;
-
     id<MTLFunction> fn = [library newFunctionWithName:name];
-    if (!fn) {
-      std::fprintf(stderr, "[pd::Detector] Missing Metal function: %s\n", name.UTF8String);
+    if (!fn)
       return nil;
-    }
-
     NSError *error = nil;
-    id<MTLComputePipelineState> pso = [device newComputePipelineStateWithFunction:fn error:&error];
-    if (!pso) {
-      std::fprintf(stderr, "[pd::Detector] Failed to create PSO %s: %s\n", name.UTF8String,
-                   error.localizedDescription.UTF8String);
-    }
-    return pso;
+    return [device newComputePipelineStateWithFunction:fn error:&error];
   }
 
-  void runMorphStep(id<MTLCommandBuffer> cmd,
-                    id<MTLComputePipelineState> pso,
-                    id<MTLTexture> inTex,
-                    id<MTLTexture> outTex,
-                    MTLSize tgCount,
-                    MTLSize tgSize) {
-    id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
-    [enc setComputePipelineState:pso];
-    [enc setTexture:inTex atIndex:0];
-    [enc setTexture:outTex atIndex:1];
-    [enc dispatchThreadgroups:tgCount threadsPerThreadgroup:tgSize];
-    [enc endEncoding];
-  }
-
-  bool ensureWorkingTextures(int width, int height) {
-    if (width == texWidth && height == texHeight && backgroundTexture && maskTexture && tempMaskTexture)
+  bool ensureWorkingState() {
+    if (scaledWidth == texWidth && scaledHeight == texHeight && maskTexture && tempMaskTexture && modeMeansBuffer &&
+        modeWeightsBuffer && modeVariancesBuffer && modesUsedBuffer) {
       return true;
+    }
 
-    texWidth = width;
-    texHeight = height;
-    backgroundInitialized = false;
-    tracks.clear();
-    nextTrackId = 1;
-
-    MTLTextureDescriptor *bgDesc =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR16Float
-                                                           width:static_cast<NSUInteger>(width)
-                                                          height:static_cast<NSUInteger>(height)
-                                                       mipmapped:NO];
-    bgDesc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
-    bgDesc.storageMode = MTLStorageModeShared;
+    texWidth = scaledWidth;
+    texHeight = scaledHeight;
 
     MTLTextureDescriptor *maskDesc =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm
-                                                           width:static_cast<NSUInteger>(width)
-                                                          height:static_cast<NSUInteger>(height)
+                                                           width:static_cast<NSUInteger>(texWidth)
+                                                          height:static_cast<NSUInteger>(texHeight)
                                                        mipmapped:NO];
     maskDesc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
     maskDesc.storageMode = MTLStorageModeShared;
 
-    backgroundTexture = [device newTextureWithDescriptor:bgDesc];
     maskTexture = [device newTextureWithDescriptor:maskDesc];
     tempMaskTexture = [device newTextureWithDescriptor:maskDesc];
-
-    if (!backgroundTexture || !maskTexture || !tempMaskTexture) {
-      std::fprintf(stderr, "[pd::Detector] Failed to allocate textures (%dx%d).\n", width, height);
+    if (!maskTexture || !tempMaskTexture)
       return false;
-    }
 
+    const size_t pixelCount = static_cast<size_t>(texWidth) * static_cast<size_t>(texHeight);
+    const size_t modeCount = pixelCount * static_cast<size_t>(kMog2Mixtures);
+    modeMeansBuffer = [device newBufferWithLength:(modeCount * sizeof(float) * 4) options:MTLResourceStorageModeShared];
+    modeWeightsBuffer = [device newBufferWithLength:(modeCount * sizeof(float)) options:MTLResourceStorageModeShared];
+    modeVariancesBuffer = [device newBufferWithLength:(modeCount * sizeof(float)) options:MTLResourceStorageModeShared];
+    modesUsedBuffer = [device newBufferWithLength:(pixelCount * sizeof(uint8_t)) options:MTLResourceStorageModeShared];
+
+    if (!modeMeansBuffer || !modeWeightsBuffer || !modeVariancesBuffer || !modesUsedBuffer)
+      return false;
+
+    modelFrameCount = 0;
+    clearMog2State();
     return true;
   }
 
-  std::vector<RawCandidate> extractRawCandidates() {
-    std::vector<RawCandidate> out;
-    if (cpuMask.empty() || frameWidth <= 0 || frameHeight <= 0)
-      return out;
+  void clearMog2State() {
+    if (!modeMeansBuffer || !modeWeightsBuffer || !modeVariancesBuffer || !modesUsedBuffer || texWidth <= 0 ||
+        texHeight <= 0) {
+      return;
+    }
 
-    const size_t total = static_cast<size_t>(frameWidth) * static_cast<size_t>(frameHeight);
+    const size_t pixelCount = static_cast<size_t>(texWidth) * static_cast<size_t>(texHeight);
+    const size_t modeCount = pixelCount * static_cast<size_t>(kMog2Mixtures);
+    std::memset([modeMeansBuffer contents], 0, modeCount * sizeof(float) * 4);
+    std::memset([modeWeightsBuffer contents], 0, modeCount * sizeof(float));
+    std::memset([modeVariancesBuffer contents], 0, modeCount * sizeof(float));
+    std::memset([modesUsedBuffer contents], 0, pixelCount * sizeof(uint8_t));
+  }
+
+  void extractProjectiles() {
+    last.clear();
+    if (cpuMask.empty() || scaledWidth <= 0 || scaledHeight <= 0)
+      return;
+
+    const size_t total = static_cast<size_t>(scaledWidth) * static_cast<size_t>(scaledHeight);
     visited.assign(total, 0);
     queueScratch.clear();
     queueScratch.reserve(2048);
-    out.reserve(32);
 
-    constexpr int kNeighbors[8][2] = {
-      {-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1},
-    };
+    const bool use8 = (config.connectivity == 8);
+    constexpr int k4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    constexpr int k8[8][2] = {{1, 0},  {-1, 0}, {0, 1},  {0, -1},
+                              {1, 1},  {-1, -1}, {1, -1}, {-1, 1}};
 
-    for (int y = 0; y < frameHeight; ++y) {
-      for (int x = 0; x < frameWidth; ++x) {
-        const int start = y * frameWidth + x;
+    std::vector<ProjectileFrame> temp;
+    temp.reserve(64);
+
+    const double invScale = (config.imscale == 0.0 ? 1.0 : 1.0 / config.imscale);
+
+    for (int y = 0; y < scaledHeight; ++y) {
+      for (int x = 0; x < scaledWidth; ++x) {
+        const int start = y * scaledWidth + x;
         if (visited[start] || cpuMask[start] == 0)
           continue;
 
         visited[start] = 1;
         queueScratch.clear();
         queueScratch.push_back(start);
-
         size_t head = 0;
+
         int area = 0;
         int minX = x, maxX = x, minY = y, maxY = y;
-        long long sumX = 0;
-        long long sumY = 0;
 
         while (head < queueScratch.size()) {
           const int idx = queueScratch[head++];
-          const int cx = idx % frameWidth;
-          const int cy = idx / frameWidth;
-
+          const int cx = idx % scaledWidth;
+          const int cy = idx / scaledWidth;
           ++area;
-          sumX += cx;
-          sumY += cy;
           minX = std::min(minX, cx);
           maxX = std::max(maxX, cx);
           minY = std::min(minY, cy);
           maxY = std::max(maxY, cy);
 
-          for (const auto &n : kNeighbors) {
-            const int nx = cx + n[0];
-            const int ny = cy + n[1];
-            if (nx < 0 || ny < 0 || nx >= frameWidth || ny >= frameHeight)
-              continue;
-
-            const int nidx = ny * frameWidth + nx;
-            if (visited[nidx] || cpuMask[nidx] == 0)
-              continue;
-
-            visited[nidx] = 1;
-            queueScratch.push_back(nidx);
+          if (use8) {
+            for (const auto &n : k8) {
+              const int nx = cx + n[0];
+              const int ny = cy + n[1];
+              if (nx < 0 || ny < 0 || nx >= scaledWidth || ny >= scaledHeight)
+                continue;
+              const int nidx = ny * scaledWidth + nx;
+              if (visited[nidx] || cpuMask[nidx] == 0)
+                continue;
+              visited[nidx] = 1;
+              queueScratch.push_back(nidx);
+            }
+          } else {
+            for (const auto &n : k4) {
+              const int nx = cx + n[0];
+              const int ny = cy + n[1];
+              if (nx < 0 || ny < 0 || nx >= scaledWidth || ny >= scaledHeight)
+                continue;
+              const int nidx = ny * scaledWidth + nx;
+              if (visited[nidx] || cpuMask[nidx] == 0)
+                continue;
+              visited[nidx] = 1;
+              queueScratch.push_back(nidx);
+            }
           }
         }
 
-        if (area < config.minBlobArea || area > config.maxBlobArea)
+        const int w = maxX - minX + 1;
+        const int h = maxY - minY + 1;
+        if (w <= 0 || h <= 0)
+          continue;
+        if (area < config.minArea)
+          continue;
+        const float aspect = static_cast<float>(w) / static_cast<float>(h);
+        if (aspect < config.minAspect || aspect > config.maxAspect)
           continue;
 
-        if (minX <= config.borderIgnorePixels || minY <= config.borderIgnorePixels ||
-            maxX >= frameWidth - 1 - config.borderIgnorePixels || maxY >= frameHeight - 1 - config.borderIgnorePixels)
-          continue;
-
-        const int boxW = maxX - minX + 1;
-        const int boxH = maxY - minY + 1;
-        if (boxW <= 0 || boxH <= 0)
-          continue;
-
-        const float aspect = static_cast<float>(std::max(boxW, boxH)) / static_cast<float>(std::min(boxW, boxH));
-        if (aspect > config.maxBlobAspectRatio)
-          continue;
-
-        const float fill = static_cast<float>(area) / static_cast<float>(boxW * boxH);
-        if (fill < config.minBlobFillRatio)
-          continue;
-
-        RawCandidate c;
-        c.center.x = static_cast<float>(sumX) / static_cast<float>(area);
-        c.center.y = static_cast<float>(sumY) / static_cast<float>(area);
-        c.area = area;
-        out.push_back(c);
+        ProjectileFrame p;
+        p.bbox.topLeft.x = static_cast<int>(std::lround(static_cast<double>(minX) * invScale));
+        p.bbox.topLeft.y = static_cast<int>(std::lround(static_cast<double>(minY) * invScale));
+        p.bbox.dimensions.x = std::max(1, static_cast<int>(std::lround(static_cast<double>(w) * invScale)));
+        p.bbox.dimensions.y = std::max(1, static_cast<int>(std::lround(static_cast<double>(h) * invScale)));
+        p.bbox.area = area;
+        p.center.x = p.bbox.topLeft.x + p.bbox.dimensions.x / 2;
+        p.center.y = p.bbox.topLeft.y + p.bbox.dimensions.y / 2;
+        p.frame = frameCounter;
+        temp.push_back(p);
       }
     }
 
-    std::sort(out.begin(), out.end(), [](const RawCandidate &a, const RawCandidate &b) { return a.area > b.area; });
-    if (static_cast<int>(out.size()) > config.maxRawDetections)
-      out.resize(config.maxRawDetections);
-    return out;
-  }
+    std::sort(temp.begin(), temp.end(), [](const ProjectileFrame &a, const ProjectileFrame &b) {
+      return a.bbox.area > b.bbox.area;
+    });
+    if (static_cast<int>(temp.size()) > config.maxProjectiles)
+      temp.resize(config.maxProjectiles);
 
-  std::vector<Pixel> advanceTracks(const std::vector<RawCandidate> &candidates) {
-    const float maxDistSq = config.maxAssociationDistancePx * config.maxAssociationDistancePx;
-
-    for (Track &t : tracks)
-      t.predict(config.ballisticGravityY);
-
-    std::vector<bool> used(candidates.size(), false);
-
-    for (Track &t : tracks) {
-      int best = -1;
-      float bestD2 = std::numeric_limits<float>::max();
-      for (size_t i = 0; i < candidates.size(); ++i) {
-        if (used[i])
-          continue;
-        const float d2 = distanceSquared(t.predicted, candidates[i].center);
-        if (d2 < bestD2) {
-          bestD2 = d2;
-          best = static_cast<int>(i);
-        }
-      }
-
-      if (best >= 0 && bestD2 <= maxDistSq) {
-        t.correct(candidates[best].center);
-        t.hits += 1;
-        t.misses = 0;
-        used[best] = true;
-      } else {
-        t.misses += 1;
-      }
-    }
-
-    for (size_t i = 0; i < candidates.size(); ++i) {
-      if (used[i])
-        continue;
-      tracks.emplace_back(nextTrackId++, candidates[i].center, config.smoothingAlpha);
-    }
-
-    tracks.erase(std::remove_if(tracks.begin(), tracks.end(),
-                                [&](const Track &t) { return t.misses > config.maxMissedFrames; }),
-                 tracks.end());
-
-    std::vector<Pixel> visible;
-    visible.reserve(tracks.size());
-    for (const Track &t : tracks) {
-      if (t.hits < config.minConfirmedHits || t.misses != 0)
-        continue;
-      Pixel p = t.pixel();
-      p.x = clampInt(p.x, 0, frameWidth - 1);
-      p.y = clampInt(p.y, 0, frameHeight - 1);
-      visible.push_back(p);
-    }
-    return visible;
+    last = std::move(temp);
+    ++frameCounter;
   }
 
   DetectorConfig config;
+  MOG2Params mog2Params;
+  MorphParams morphParams;
 
   id<MTLDevice> device = nil;
   id<MTLCommandQueue> queue = nil;
   id<MTLLibrary> library = nil;
-  id<MTLComputePipelineState> initPSO = nil;
-  id<MTLComputePipelineState> bgSubPSO = nil;
-  id<MTLComputePipelineState> erodePSO = nil;
+  id<MTLComputePipelineState> mog2PSO = nil;
   id<MTLComputePipelineState> dilatePSO = nil;
+  id<MTLComputePipelineState> erodePSO = nil;
 
   CVMetalTextureCacheRef textureCache = nullptr;
 
-  id<MTLTexture> backgroundTexture = nil;
   id<MTLTexture> maskTexture = nil;
   id<MTLTexture> tempMaskTexture = nil;
+  id<MTLBuffer> modeMeansBuffer = nil;
+  id<MTLBuffer> modeWeightsBuffer = nil;
+  id<MTLBuffer> modeVariancesBuffer = nil;
+  id<MTLBuffer> modesUsedBuffer = nil;
 
   int texWidth = 0;
   int texHeight = 0;
   int frameWidth = 0;
   int frameHeight = 0;
-  bool backgroundInitialized = false;
-  int warmupCounter = 0;
+  int scaledWidth = 0;
+  int scaledHeight = 0;
+  uint64_t modelFrameCount = 0;
+  uint64_t frameCounter = 0;
 
   std::vector<uint8_t> cpuMask;
   std::vector<uint8_t> visited;
   std::vector<int> queueScratch;
-
-  int nextTrackId = 1;
-  std::vector<Track> tracks;
+  std::vector<ProjectileFrame> last;
 };
 
 Detector::Detector(const DetectorConfig &config) : _impl(std::make_unique<Impl>(config)) {}
@@ -655,57 +836,50 @@ std::vector<Pixel> Detector::process(const ImageFrame &frame) {
   return _impl->process(frame);
 }
 
+const std::vector<ProjectileFrame> &Detector::lastProjectiles() const {
+  static const std::vector<ProjectileFrame> kEmpty;
+  if (!_impl)
+    return kEmpty;
+  return _impl->lastProjectiles();
+}
+
+void Detector::applyConfig(const DetectorConfig &config) {
+  if (_impl)
+    _impl->applyConfig(config);
+}
+
 void drawPoint(ImageFrame &frame, const Pixel &point, int radius) {
-  CVPixelBufferRef pb = frame.pixelBuffer();
-  if (!pb)
+  LockedFrameView locked(frame.pixelBuffer(), 0);
+  if (!locked.valid())
     return;
-
-  if (CVPixelBufferGetPixelFormatType(pb) != kCVPixelFormatType_32BGRA)
-    return;
-
-  CVPixelBufferLockBaseAddress(pb, 0);
-  void *base = CVPixelBufferGetBaseAddress(pb);
-  if (!base) {
-    CVPixelBufferUnlockBaseAddress(pb, 0);
-    return;
-  }
-
-  const int width = static_cast<int>(CVPixelBufferGetWidth(pb));
-  const int height = static_cast<int>(CVPixelBufferGetHeight(pb));
-  const int stride = static_cast<int>(CVPixelBufferGetBytesPerRow(pb));
-  drawPointIntoBGRA(static_cast<uint8_t *>(base), width, height, stride, point, radius);
-
-  CVPixelBufferUnlockBaseAddress(pb, 0);
+  drawPointIntoBGRA(locked.base(), locked.width(), locked.height(), locked.stride(), point, radius);
 }
 
 void drawPoints(ImageFrame &frame, const std::vector<Pixel> &points, int radius) {
   if (points.empty())
     return;
-
-  CVPixelBufferRef pb = frame.pixelBuffer();
-  if (!pb)
+  LockedFrameView locked(frame.pixelBuffer(), 0);
+  if (!locked.valid())
     return;
-
-  if (CVPixelBufferGetPixelFormatType(pb) != kCVPixelFormatType_32BGRA)
-    return;
-
-  CVPixelBufferLockBaseAddress(pb, 0);
-  void *base = CVPixelBufferGetBaseAddress(pb);
-  if (!base) {
-    CVPixelBufferUnlockBaseAddress(pb, 0);
-    return;
-  }
-
-  const int width = static_cast<int>(CVPixelBufferGetWidth(pb));
-  const int height = static_cast<int>(CVPixelBufferGetHeight(pb));
-  const int stride = static_cast<int>(CVPixelBufferGetBytesPerRow(pb));
-
-  auto *ptr = static_cast<uint8_t *>(base);
   for (const Pixel &p : points)
-    drawPointIntoBGRA(ptr, width, height, stride, p, radius);
+    drawPointIntoBGRA(locked.base(), locked.width(), locked.height(), locked.stride(), p, radius);
+}
 
-  CVPixelBufferUnlockBaseAddress(pb, 0);
+void drawProjectiles(ImageFrame &frame,
+                     const std::vector<ProjectileFrame> &projectiles,
+                     int boxThickness,
+                     int centerRadius) {
+  if (projectiles.empty())
+    return;
+  LockedFrameView locked(frame.pixelBuffer(), 0);
+  if (!locked.valid())
+    return;
+
+  for (const ProjectileFrame &p : projectiles) {
+    const RectI bbox{p.bbox.topLeft.x, p.bbox.topLeft.y, p.bbox.dimensions.x, p.bbox.dimensions.y};
+    drawRectIntoBGRA(locked.base(), locked.width(), locked.height(), locked.stride(), bbox, boxThickness);
+    drawPointIntoBGRA(locked.base(), locked.width(), locked.height(), locked.stride(), p.center, centerRadius);
+  }
 }
 
 } // namespace pd
-

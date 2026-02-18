@@ -1,6 +1,6 @@
+#include "detector/Detector.h"
 #include "videostream/CameraSource.h"
 #include "videostream/ImageViewer.h"
-#include "detector/Detector.h"
 
 #include <chrono>
 #include <thread>
@@ -11,23 +11,18 @@ int main() {
   pd::ImageViewer viewer;
 
   pd::DetectorConfig detectorCfg;
-  detectorCfg.foregroundThreshold = 0.16f;
-  detectorCfg.backgroundLearningRate = 0.02f;
-  detectorCfg.foregroundUpdateScale = 0.1f;
-  detectorCfg.morphologyOpenIterations = 1;
-  detectorCfg.morphologyCloseIterations = 1;
-  detectorCfg.warmupFrames = 20;
-  detectorCfg.minBlobArea = 25;
-  detectorCfg.maxBlobArea = 5000;
-  detectorCfg.maxBlobAspectRatio = 4.0f;
-  detectorCfg.minBlobFillRatio = 0.2f;
-  detectorCfg.borderIgnorePixels = 6;
-  detectorCfg.maxRawDetections = 32;
-  detectorCfg.minConfirmedHits = 3;
-  detectorCfg.maxMissedFrames = 5;
-  detectorCfg.maxAssociationDistancePx = 55.0f;
-  detectorCfg.ballisticGravityY = 0.0f;
-  detectorCfg.smoothingAlpha = 0.65f;
+  detectorCfg.imscale = 0.5;
+  detectorCfg.bgHistory = 120;
+  detectorCfg.varThreshold = 16.0;
+  detectorCfg.detectShadows = false;
+  detectorCfg.bgRatio = 0.98;
+  detectorCfg.closeKernelSize = 3;
+  detectorCfg.closeIterations = 1;
+  detectorCfg.connectivity = 8;
+  detectorCfg.minArea = 300;
+  detectorCfg.minAspect = 0.35f;
+  detectorCfg.maxAspect = 2.8f;
+  detectorCfg.maxProjectiles = 6;
 
   pd::Detector detector0(detectorCfg);
   pd::Detector detector1(detectorCfg);
@@ -46,15 +41,15 @@ int main() {
 
     if (ok0 && f0.frame != lastSeq0) {
       lastSeq0 = f0.frame;
-      const auto points0 = detector0.process(f0);
-      pd::drawPoints(f0, points0);
+      detector0.process(f0);
+      pd::drawProjectiles(f0, detector0.lastProjectiles());
       viewer.show("Camera 0", f0);
       updated0 = true;
     }
     if (ok1 && f1.frame != lastSeq1) {
       lastSeq1 = f1.frame;
-      const auto points1 = detector1.process(f1);
-      pd::drawPoints(f1, points1);
+      detector1.process(f1);
+      pd::drawProjectiles(f1, detector1.lastProjectiles());
       viewer.show("Camera 1", f1);
       updated1 = true;
     }

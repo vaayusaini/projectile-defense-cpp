@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -12,40 +13,40 @@ struct Pixel {
   int y = 0;
 };
 
+struct BoundingBox {
+  Pixel topLeft;
+  Pixel dimensions;
+  int area = 0;
+};
+
+struct ProjectileFrame {
+  Pixel center;
+  BoundingBox bbox;
+  uint64_t frame = 0;
+};
+
 struct DetectorConfig {
-  // Foreground threshold in normalized luma [0, 1].
-  float foregroundThreshold = 0.16f;
+  // Resize factor used before bg subtraction / morphology.
+  double imscale = 1.0;
 
-  // Background exponential learning rate in [0, 1].
-  float backgroundLearningRate = 0.02f;
+  // Background model tuning (MOG2-style names retained for compatibility).
+  int bgHistory = 200;
+  double varThreshold = 16.0;
+  bool detectShadows = false;
+  double bgRatio = 0.7;
 
-  // Extra attenuation applied to learning when pixel is foreground.
-  // 0.0 => no bg update on fg pixels, 1.0 => full update.
-  float foregroundUpdateScale = 0.1f;
+  // Morphological close config.
+  int closeKernelSize = 5;
+  int closeIterations = 1;
 
-  // Morphological opening iterations (erode -> dilate).
-  int morphologyOpenIterations = 1;
+  // Connected components config.
+  int connectivity = 8;
+  int minArea = 30;
+  float minAspect = 0.25f; // width / height lower bound
+  float maxAspect = 4.0f;  // width / height upper bound
 
-  // Morphological closing iterations (dilate -> erode).
-  int morphologyCloseIterations = 1;
-
-  // Drop very early frames while background initializes.
-  int warmupFrames = 20;
-
-  // Raw connected-component filters.
-  int minBlobArea = 25;
-  int maxBlobArea = 5000;
-  float maxBlobAspectRatio = 4.0f;
-  float minBlobFillRatio = 0.2f;
-  int borderIgnorePixels = 6;
-  int maxRawDetections = 32;
-
-  // Temporal tracking/stability filters.
-  float maxAssociationDistancePx = 55.0f;
-  int minConfirmedHits = 3;
-  int maxMissedFrames = 5;
-  float ballisticGravityY = 0.0f;
-  float smoothingAlpha = 0.65f;
+  // Optional cap on returned projectiles (largest area first).
+  int maxProjectiles = 32;
 };
 
 class Detector {
@@ -59,8 +60,13 @@ public:
   Detector(Detector &&) noexcept;
   Detector &operator=(Detector &&) noexcept;
 
-  // Runs GPU background subtraction + morphology, then returns stable centers.
+  // Updates internal buffers and returns projectile centers for this frame.
   std::vector<Pixel> process(const ImageFrame &frame);
+
+  // Most recent projectile detections with bbox/center metadata.
+  const std::vector<ProjectileFrame> &lastProjectiles() const;
+
+  void applyConfig(const DetectorConfig &config);
 
 private:
   struct Impl;
@@ -73,5 +79,8 @@ void drawPoint(ImageFrame &frame, const Pixel &point, int radius = 3);
 // Convenience helper to draw multiple points.
 void drawPoints(ImageFrame &frame, const std::vector<Pixel> &points, int radius = 3);
 
-} // namespace pd
+// Draws projectile bbox (green) and center (red) on the frame.
+void drawProjectiles(ImageFrame &frame, const std::vector<ProjectileFrame> &projectiles, int boxThickness = 2,
+                     int centerRadius = 3);
 
+} // namespace pd
