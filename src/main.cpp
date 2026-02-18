@@ -1,11 +1,11 @@
 #include "detector/Detector.h"
 #include "videostream/CameraSource.h"
 #include "videostream/ImageViewer.h"
-
+#include <CSerialPort/SerialPort.h>
 #include <chrono>
 #include <thread>
 
-int main() {
+int detect() {
   pd::CameraSource cam0(0);
   pd::CameraSource cam1(1);
   pd::ImageViewer viewer;
@@ -19,7 +19,7 @@ int main() {
   detectorCfg.closeKernelSize = 3;
   detectorCfg.closeIterations = 1;
   detectorCfg.connectivity = 8;
-  detectorCfg.minArea = 300;
+  detectorCfg.minArea = 400;
   detectorCfg.minAspect = 0.35f;
   detectorCfg.maxAspect = 2.8f;
   detectorCfg.maxProjectiles = 6;
@@ -54,7 +54,7 @@ int main() {
       updated1 = true;
     }
 
-    const int key = viewer.waitKey(8);
+    const int key = viewer.waitKey(1);
     if (key == 'q')
       break;
 
@@ -65,3 +65,5 @@ int main() {
 
   return 0;
 }
+
+int main() {}
