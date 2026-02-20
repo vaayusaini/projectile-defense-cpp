@@ -1,6 +1,9 @@
 #include <cmath>
 #include <iostream>
+#include "position.h"
 
+
+namespace pd {
 // CONSTANTS
 // Camera Settings
 const double camAngleX = 1.0472;
@@ -34,7 +37,7 @@ double findDepth(double xR1, double yR1, double xR2, double yR2) {
     return (camSeparationX * xR + camSeparationY * yR) / (xR * xR + yR * yR);
 }
 
-std::vector<double> findCoordinates(int cam1PixelX, int cam1PixelY, int cam2PixelX, int cam2PixelY) {
+Vector3 findCoordinates(int cam1PixelX, int cam1PixelY, int cam2PixelX, int cam2PixelY) {
     // Basically finds the value of tan for this angle,
     // except the math is so good I dont need tan
     double xRatio1 = findXRatio(cam1PixelX, cam1TiltX);
@@ -47,6 +50,8 @@ std::vector<double> findCoordinates(int cam1PixelX, int cam1PixelY, int cam2Pixe
     double yCoord = (cam1Y + cam2Y + zCoord * (yRatio1 + yRatio2)) / 2;
 
     std::cout << "coordinates: (" << xCoord << "," << yCoord << "," << zCoord << ")\n";
-    std::vector<double> coords = {xCoord, yCoord, zCoord};
+    Vector3 coords(xCoord, yCoord, zCoord);
     return coords;
+}
+
 }

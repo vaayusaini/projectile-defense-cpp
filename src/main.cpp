@@ -1,8 +1,5 @@
-#include "cameracomparison.h"
-#include "movement.h"
-#include "projectile.h"
 #include "projectiledetector.h"
-#include "projectiletracker.h"
+#include "tracker.h"
 #include <iostream>
 #include <opencv2/core/utility.hpp>
 #include <opencv2/opencv.hpp>
@@ -28,11 +25,8 @@ int main() {
     int framesProcessed = 1;
     const int64 startTime = cv::getTickCount();
 
-    pd::ProjectileTracker pt1 = pd::ProjectileTracker();
-    pd::ProjectileTracker pt2 = pd::ProjectileTracker();
-    pd::CameraComparison workingCameraComparison = pd::CameraComparison(nullptr, nullptr);
-    pd::Projectile workingProjectile = pd::Projectile(workingCameraComparison.coordinates);
-    
+    pd::Tracker tracker;
+
     while (true) {
         // CAMERAS
         if (!pd1.findProjectiles(framesProcessed, firstProjectileFrames)) {
@@ -48,39 +42,13 @@ int main() {
         std::cout << secondProjectileFrames.size();
         std::cout << framesProcessed;
         std::cout << std::endl;
-
-        pd::ProjectileState* mainProjectileState1 = pt1.getMainProjectile(framesProcessed, firstProjectileFrames);
-        pd::ProjectileState* mainProjectileState2 = pt2.getMainProjectile(framesProcessed, secondProjectileFrames);
-
-        if (framesProcessed == 520) {
-            std::cout << "hi";
-        }
-
-        if (!workingCameraComparison.sameStates(mainProjectileState1, mainProjectileState2)) {
-            workingCameraComparison = pd::CameraComparison(mainProjectileState1, mainProjectileState2);
-            pd::Projectile workingProjectile = pd::Projectile(workingCameraComparison.coordinates);
-        }
-        workingCameraComparison.updateCoordinates();
-        workingProjectile.getIntercept();
-        // std::cout << "angle " << workingProjectile.releaseAngle << std::endl;
-        // std::cout << "time " << workingProjectile.releaseTime << std::endl;
-        // //Figure out Motor movement here
-        // if ((workingProjectile.releaseTime - (framesProcessed/30)) < 0.03) { //the 30 and the 0.03 will change if we change fps
-        //     while ((workingProjectile.releaseTime - (framesProcessed/30)) < 0.03) {
-                
-        //     }
-        //     // TRIGGER HERE
-
-        //     break;
-        // }
+        tracker.updateCoordinates(firstProjectileFrames, secondProjectileFrames);
+        tracker.printV();
+        
 
         framesProcessed ++;
         if (cv::waitKey(1) == 'q') {
             break;
-        }
-
-        if (framesProcessed == 30) {
-            std::cout << (mainProjectileState1->lastUpdateFrame);
         }
 
     }
