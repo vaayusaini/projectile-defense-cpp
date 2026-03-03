@@ -1,18 +1,20 @@
 #include "CSerialPort/SerialPort.h"
 #include "CSerialPort/SerialPortInfo.h"
 #include "detector/Detector.h"
+#include "tracker/Tracker.h"
 #include "videostream/CameraSource.h"
 #include "videostream/ImageViewer.h"
 #include <chrono>
 #include <iostream>
 #include <string>
+#include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
 
 int detect() {
-  pd::CameraSource cam0(0);
-  pd::CameraSource cam1(1);
+  pd::CameraSource cam0(1);
+  pd::CameraSource cam1(2);
   pd::ImageViewer viewer;
 
   pd::DetectorConfig detectorCfg;
@@ -24,7 +26,7 @@ int detect() {
   detectorCfg.closeKernelSize = 3;
   detectorCfg.closeIterations = 1;
   detectorCfg.connectivity = 8;
-  detectorCfg.minArea = 400;
+  detectorCfg.minArea = 260;
   detectorCfg.minAspect = 0.35f;
   detectorCfg.maxAspect = 2.8f;
   detectorCfg.maxProjectiles = 6;
@@ -37,35 +39,62 @@ int detect() {
   uint64_t lastSeq0 = 0;
   uint64_t lastSeq1 = 0;
 
+  std::vector<pd::ProjectileFrame> cam0Projectiles;
+  std::vector<pd::ProjectileFrame> cam1Projectiles;
+
+  pd::Tracker tracker;
+
   while (true) {
 
     const bool ok0 = cam0.read(f0);
     const bool ok1 = cam1.read(f1);
-    bool updated0 = false;
-    bool updated1 = false;
 
-    if (ok0 && f0.frame != lastSeq0) {
-      lastSeq0 = f0.frame;
-      detector0.process(f0);
-      pd::drawProjectiles(f0, detector0.lastProjectiles());
-      viewer.show("Camera 0", f0);
-      updated0 = true;
-    }
-    if (ok1 && f1.frame != lastSeq1) {
-      lastSeq1 = f1.frame;
-      detector1.process(f1);
-      pd::drawProjectiles(f1, detector1.lastProjectiles());
-      viewer.show("Camera 1", f1);
-      updated1 = true;
+    if (!ok0 || !ok1) {
+      const int key = viewer.waitKey(1);
+      if (key == 'q')
+        break;
+
+      continue;
     }
 
-    const int key = viewer.waitKey(1);
-    if (key == 'q')
-      break;
+    if (f0.frame == lastSeq0 || f1.frame == lastSeq1) {
+      const int key = viewer.waitKey(1);
+      if (key == 'q')
+        break;
 
-    if (!updated0 && !updated1) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+      continue;
     }
+
+    lastSeq0 = f0.frame;
+    detector0.process(f0);
+    cam0Projectiles = detector0.lastProjectiles();
+
+    for (int i = 0; i < cam0Projectiles.size(); i++) {
+      pd::ProjectileFrame &projectile = cam0Projectiles[i];
+      projectile.center.x = (1920 - projectile.center.x);
+    }
+
+    pd::drawProjectiles(f0, detector0.lastProjectiles());
+    viewer.show("Camera 0", f0);
+
+    lastSeq1 = f1.frame;
+    detector1.process(f1);
+    cam1Projectiles = detector1.lastProjectiles();
+
+    for (int i = 0; i < cam1Projectiles.size(); i++) {
+      pd::ProjectileFrame &projectile = cam1Projectiles[i];
+      projectile.center.x = (1920 - projectile.center.x);
+    }
+
+    pd::drawProjectiles(f1, detector1.lastProjectiles());
+    viewer.show("Camera 1", f1);
+
+    tracker.updateCoordinates(cam0Projectiles, cam1Projectiles);
+
+    std::cout << "frame0: " << lastSeq0 << " frame1: " << lastSeq1 << std::endl;
+
+    double t = lastSeq1 / 30.0;
+    tracker.printV(t);
   }
 
   return 0;
@@ -85,6 +114,17 @@ void fireTriggerMotor(itas109::CSerialPort &motor) {
   sleepFor(1000);
 
   writeAngleToMotor(motor, 35);
+}
+
+long long getCurrentTimeMilliseconds() {
+  // Get the current time point from the system clock
+  auto now = std::chrono::system_clock::now();
+
+  // Cast the duration since the epoch to milliseconds
+  auto milliseconds_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
+
+  // Return the count of milliseconds as a long long integer
+  return milliseconds_since_epoch.count();
 }
 
 int arduino() {
@@ -127,7 +167,18 @@ int arduino() {
       break;
     }
 
-    fireTriggerMotor(motor);
+    writeAngleToMotor(motor, 65);
+
+    long long timeStarted = getCurrentTimeMilliseconds();
+    long long timeElapsed = 0;
+
+    while (timeElapsed < 1000) {
+      timeElapsed = getCurrentTimeMilliseconds() - timeStarted;
+      std::cout << "time elapsed: " << timeElapsed << std::endl;
+      sleepFor(1);
+    }
+
+    writeAngleToMotor(motor, 35);
   }
 
   // while (true) {
