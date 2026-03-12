@@ -73,9 +73,9 @@ void Tracker::_updateTrendline() {
 }
 
 void Tracker::printV(double t) {
-  std::cout << "expected position:" << _vI.x * t + _pI.x << ", " << -4.9 * t * t + _vI.y * t + _pI.y << ", "
-            << _vI.z * t + _pI.z << std::endl;
-  std::cout << "position:" << _pI.x << ", " << _pI.y << ", " << _pI.z << std::endl;
+  // std::cout << "expected position:" << _vI.x * t + _pI.x << ", " << -4.9 * t * t + _vI.y * t + _pI.y << ", "
+  // << _vI.z * t + _pI.z << std::endl;
+  // std::cout << "position:" << _pI.x << ", " << _pI.y << ", " << _pI.z << std::endl;
 }
 
 } // namespace pd

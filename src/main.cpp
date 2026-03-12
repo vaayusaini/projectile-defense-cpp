@@ -110,10 +110,10 @@ void writeAngleToMotor(itas109::CSerialPort &motor, int angle) {
 void sleepFor(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
 
 void fireTriggerMotor(itas109::CSerialPort &motor) {
-  writeAngleToMotor(motor, 65);
+  writeAngleToMotor(motor, 120);
   sleepFor(1000);
 
-  writeAngleToMotor(motor, 35);
+  writeAngleToMotor(motor, 30);
 }
 
 long long getCurrentTimeMilliseconds() {
@@ -127,7 +127,7 @@ long long getCurrentTimeMilliseconds() {
   return milliseconds_since_epoch.count();
 }
 
-int arduino() {
+int trigger() {
   using itas109::CSerialPort;
 
   const std::vector<itas109::SerialPortInfo> ports = itas109::CSerialPortInfo::availablePortInfos();
@@ -167,7 +167,7 @@ int arduino() {
       break;
     }
 
-    writeAngleToMotor(motor, 65);
+    writeAngleToMotor(motor, 120);
 
     long long timeStarted = getCurrentTimeMilliseconds();
     long long timeElapsed = 0;
@@ -178,7 +178,7 @@ int arduino() {
       sleepFor(1);
     }
 
-    writeAngleToMotor(motor, 35);
+    writeAngleToMotor(motor, 30);
   }
 
   // while (true) {
@@ -199,4 +199,51 @@ int arduino() {
   return 0;
 }
 
-int main() { return arduino(); }
+int platformMotor() {
+  using itas109::CSerialPort;
+
+  const std::vector<itas109::SerialPortInfo> ports = itas109::CSerialPortInfo::availablePortInfos();
+
+  if (ports.empty()) {
+    std::cerr << "No serial ports found.\n";
+    return -1;
+  }
+
+  for (int i = 0; i < ports.size(); i++) {
+    std::cout << "port: " << ports[i].portName << " id: " << ports[i].hardwareId << std::endl;
+  }
+
+  std::string portName;
+
+  std::cout << "enter the motor port name:";
+  std::cin >> portName;
+
+  itas109::CSerialPort motor(portName.c_str());
+  motor.setBaudRate(9600);
+  motor.open();
+
+  if (!motor.isOpen()) {
+    std::cout << "unable to connect to motor " << portName;
+    return -1;
+  }
+
+  sleepFor(100);
+
+  while (true) {
+    std::cout << "enter input:";
+
+    std::string input;
+    std::cin >> input;
+
+    if (input == "q") {
+      break;
+    }
+
+    int inputAngle = std::stoi(input);
+    writeAngleToMotor(motor, inputAngle);
+  }
+
+  return 0;
+}
+
+int main() { return detect(); }
