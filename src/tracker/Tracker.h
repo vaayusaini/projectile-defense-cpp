@@ -18,15 +18,18 @@ private:
   std::vector<TrackerFrame> _coordinates;
   void _updateVelocities();
   void _updateInitialPositions();
+  Vector3 _findMiddle(std::vector<Vector3> values, double allowableDistance);
   void _updateTrendline();
+  Vector3 _expectedPosition(double t);
+  double _domeHeight(double radius);
+  void _getIntercept();
 
 public:
   Tracker();
-  void printV(double t);
+  void print(double t);
   double releaseAngle;
   double releaseTime;
   void updateCoordinates(std::vector<ProjectileFrame> cam1Frames, std::vector<ProjectileFrame> cam2Frames);
-  void getIntercept();
 };
 
 } // namespace pd

@@ -12,6 +12,9 @@
 #include <unistd.h>
 #include <vector>
 
+itas109::CSerialPort arduinoPort;
+
+
 int detect() {
   pd::CameraSource cam0(1);
   pd::CameraSource cam1(2);
@@ -89,17 +92,22 @@ int detect() {
     pd::drawProjectiles(f1, detector1.lastProjectiles());
     viewer.show("Camera 1", f1);
 
+    std::cout << "frame0: " << lastSeq0 << " frame1: " << lastSeq1 << std::endl;
     tracker.updateCoordinates(cam0Projectiles, cam1Projectiles);
 
-    std::cout << "frame0: " << lastSeq0 << " frame1: " << lastSeq1 << std::endl;
-
     double t = lastSeq1 / 30.0;
-    tracker.printV(t);
+    tracker.print(t);
+    //NEED TO ADD PORT NAMES FOR THE TWO MOTORS BELOW
+    writeAngleToMotor(arduinoPort, static_cast<int>(tracker.releaseAngle * 180 / 3.14159));
+    if ((t - tracker.releaseTime) < 0.04) {
+      sleepFor((t - tracker.releaseTime) * 1000);
+      fireTriggerMotor(arduinoPort);
+    }
   }
 
   return 0;
 }
-
+// VAAYU YOU NEED TO FIX THIS I DONT THINK ITLL WORK
 void writeAngleToMotor(itas109::CSerialPort &motor, int angle) {
   const std::string packet = std::to_string(angle) + "\n";
 
