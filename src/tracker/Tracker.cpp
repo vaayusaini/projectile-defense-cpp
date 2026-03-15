@@ -60,12 +60,17 @@ Vector3 Tracker::_findMiddle(std::vector<Vector3> values, double allowableDistan
   std::sort(ys.begin(), ys.end());
   std::sort(zs.begin(), zs.end());
   //REMOVING OUTLIERS
-  int middleIndex = static_cast<int>(values.size() / 2); // not quite if it has an odd size but thats not really important
-  Vector3 median(xs[middleIndex], ys[middleIndex], zs[middleIndex]);
+  size_t quartIndex = values.size() / 4; // not quite if it has an odd size but thats not really important
+  size_t medianIndex = values.size() / 2;
+  size_t thirdQuartIndex = values.size() - quartIndex;
+  Vector3 firstQuart(xs[quartIndex], ys[quartIndex], zs[quartIndex]);
+  Vector3 median(xs[medianIndex], ys[medianIndex], zs[medianIndex]);
+  Vector3 thirdQuart(xs[thirdQuartIndex], ys[thirdQuartIndex], zs[thirdQuartIndex]);
+  Vector3 sD = thirdQuart - firstQuart;
   std::vector<Vector3> usable;
   for (int i = 0; i < values.size(); ++i) {
-    Vector3 diff = median - values[i];
-    if (diff.magnitudeSquared() < allowableDistance * allowableDistance) {
+    Vector3 d = median - values[i];
+    if ((std::abs(d.x) < std::abs(sD.x)) and (std::abs(d.y) < std::abs(sD.y)) and (std::abs(d.z) < std::abs(sD.z))) {
       usable.push_back(values[i]);
     }
   }
