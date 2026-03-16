@@ -12,10 +12,59 @@
 #include <unistd.h>
 #include <vector>
 
-itas109::CSerialPort arduinoPort;
+// VAAYU YOU NEED TO FIX THIS I DONT THINK ITLL WORK
+void writeAngleToMotor(itas109::CSerialPort &motor, int angle) {
+  const std::string packet = std::to_string(angle) + "\n";
 
+  const int size = static_cast<int>(packet.size());
+  motor.writeData(packet.data(), size);
+}
+
+void trigger(itas109::CSerialPort &motor) {
+  const std::string packet = "f\n";
+  const int size = static_cast<int>(packet.size());
+  motor.writeData(packet.data(), size);
+}
+
+void sleepFor(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
+
+itas109::CSerialPort getMotor() {
+  using itas109::CSerialPort;
+
+  const std::vector<itas109::SerialPortInfo> ports = itas109::CSerialPortInfo::availablePortInfos();
+
+  if (ports.empty()) {
+    std::cerr << "No serial ports found.\n";
+    std::runtime_error("Could not find any serial ports");
+  }
+
+  for (int i = 0; i < ports.size(); i++) {
+    std::cout << "port: " << ports[i].portName << " id: " << ports[i].hardwareId << std::endl;
+  }
+
+  std::string portName;
+
+  std::cout << "enter the motor port name:";
+  std::cin >> portName;
+
+  itas109::CSerialPort motor(portName.c_str());
+  motor.setBaudRate(9600);
+  motor.open();
+
+  return motor;
+}
 
 int detect() {
+
+  itas109::CSerialPort motor = getMotor();
+
+  if (!motor.isOpen()) {
+    std::cout << "unable to connect to motor ";
+    return -1;
+  }
+
+  sleepFor(100);
+
   pd::CameraSource cam0(1);
   pd::CameraSource cam1(2);
   pd::ImageViewer viewer;
@@ -96,32 +145,16 @@ int detect() {
     tracker.updateCoordinates(cam0Projectiles, cam1Projectiles);
 
     double t = lastSeq1 / 30.0;
-    tracker.print(t);
-    //NEED TO ADD PORT NAMES FOR THE TWO MOTORS BELOW
-    writeAngleToMotor(arduinoPort, static_cast<int>(tracker.releaseAngle * 180 / 3.14159));
-    if ((t - tracker.releaseTime) < 0.04) {
+    // tracker.print(t);
+    // NEED TO ADD PORT NAMES FOR THE TWO MOTORS BELOW
+    writeAngleToMotor(motor, static_cast<int>(tracker.releaseAngle * 180 / 3.14159 + 90));
+    if (((t - tracker.releaseTime) < 0.04) and (tracker.releaseTime != 0)) {
       sleepFor((t - tracker.releaseTime) * 1000);
-      fireTriggerMotor(arduinoPort);
+      trigger(motor);
     }
   }
 
   return 0;
-}
-// VAAYU YOU NEED TO FIX THIS I DONT THINK ITLL WORK
-void writeAngleToMotor(itas109::CSerialPort &motor, int angle) {
-  const std::string packet = std::to_string(angle) + "\n";
-
-  const int size = static_cast<int>(packet.size());
-  motor.writeData(packet.data(), size);
-}
-
-void sleepFor(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
-
-void fireTriggerMotor(itas109::CSerialPort &motor) {
-  writeAngleToMotor(motor, 120);
-  sleepFor(1000);
-
-  writeAngleToMotor(motor, 30);
 }
 
 long long getCurrentTimeMilliseconds() {
@@ -282,30 +315,10 @@ itas109::CSerialPort askForMotor() {
 }
 
 int manualControl() {
-  using itas109::CSerialPort;
-
-  const std::vector<itas109::SerialPortInfo> ports = itas109::CSerialPortInfo::availablePortInfos();
-
-  if (ports.empty()) {
-    std::cerr << "No serial ports found.\n";
-    return -1;
-  }
-
-  for (int i = 0; i < ports.size(); i++) {
-    std::cout << "port: " << ports[i].portName << " id: " << ports[i].hardwareId << std::endl;
-  }
-
-  std::string portName;
-
-  std::cout << "enter the motor port name:";
-  std::cin >> portName;
-
-  itas109::CSerialPort motor(portName.c_str());
-  motor.setBaudRate(9600);
-  motor.open();
+  itas109::CSerialPort motor = getMotor();
 
   if (!motor.isOpen()) {
-    std::cout << "unable to connect to motor " << portName;
+    std::cout << "unable to connect to motor";
     return -1;
   }
 
@@ -319,13 +332,15 @@ int manualControl() {
 
     if (input == "q") {
       break;
+    } else if (input == "f") {
+      trigger(motor);
+    } else {
+      int inputAngle = std::stoi(input);
+      writeAngleToMotor(motor, inputAngle);
     }
-
-    int inputAngle = std::stoi(input);
-    writeAngleToMotor(motor, inputAngle);
   }
 
   return 0;
 }
 
-int main() { return manualControl(); }
+int main() { return detect(); }

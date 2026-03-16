@@ -27,8 +27,8 @@ private:
 public:
   Tracker();
   void print(double t);
-  double releaseAngle;
-  double releaseTime;
+  double releaseAngle = 0;
+  double releaseTime = 0;
   void updateCoordinates(std::vector<ProjectileFrame> cam1Frames, std::vector<ProjectileFrame> cam2Frames);
 };
 
