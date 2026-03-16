@@ -254,4 +254,78 @@ int platformMotor() {
   return 0;
 }
 
-int main() { return detect(); }
+itas109::CSerialPort askForMotor() {
+  const std::vector<itas109::SerialPortInfo> ports = itas109::CSerialPortInfo::availablePortInfos();
+
+  if (ports.empty()) {
+    std::cerr << "No serial ports found.\n";
+    std::runtime_error("Could not find any serial ports");
+  }
+
+  for (int i = 0; i < ports.size(); i++) {
+    std::cout << "port: " << ports[i].portName << " id: " << ports[i].hardwareId << std::endl;
+  }
+
+  std::string portIndexString;
+
+  std::cout << "enter the port index:";
+  std::cin >> portIndexString;
+
+  int portIndex = std::stoi(portIndexString);
+
+  std::string portName = ports[portIndex].portName;
+  itas109::CSerialPort motor(portName.c_str());
+  motor.setBaudRate(9600);
+  motor.open();
+
+  return motor;
+}
+
+int manualControl() {
+  using itas109::CSerialPort;
+
+  const std::vector<itas109::SerialPortInfo> ports = itas109::CSerialPortInfo::availablePortInfos();
+
+  if (ports.empty()) {
+    std::cerr << "No serial ports found.\n";
+    return -1;
+  }
+
+  for (int i = 0; i < ports.size(); i++) {
+    std::cout << "port: " << ports[i].portName << " id: " << ports[i].hardwareId << std::endl;
+  }
+
+  std::string portName;
+
+  std::cout << "enter the motor port name:";
+  std::cin >> portName;
+
+  itas109::CSerialPort motor(portName.c_str());
+  motor.setBaudRate(9600);
+  motor.open();
+
+  if (!motor.isOpen()) {
+    std::cout << "unable to connect to motor " << portName;
+    return -1;
+  }
+
+  sleepFor(100);
+
+  while (true) {
+    std::cout << "enter input:";
+
+    std::string input;
+    std::cin >> input;
+
+    if (input == "q") {
+      break;
+    }
+
+    int inputAngle = std::stoi(input);
+    writeAngleToMotor(motor, inputAngle);
+  }
+
+  return 0;
+}
+
+int main() { return manualControl(); }
