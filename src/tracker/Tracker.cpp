@@ -1,7 +1,7 @@
 #include "Tracker.h"
 #include "Position.h"
-#include <iostream>
 #include <cmath>
+#include <iostream>
 
 int fps = 30;
 double spf = 1.0 / fps;
@@ -11,18 +11,17 @@ double positionOutlierDistance = 5.0;
 
 double triggerDelay = 0.333;
 double gunVelocity = 36.576;
-double gunAngle = 0.35; //this is just a placeholder cause we havent tested it
+double gunAngle = 0.35; // this is just a placeholder cause we havent tested it
 double gv0R = gunVelocity * cos(gunAngle);
 double gv0Y = gunVelocity * sin(gunAngle);
 // these two could be eliminated (go to 0) if we decrease the trigger time and make the height at the pivot point y = 0
-double dartReleaseHeight = 0.1016; // the height of where the dart leaves the front of the gun
-double horizontalReleaseShift = 0.1524; //the horizontal distance from the front of the gun to the pivot point
-
+double dartReleaseHeight = 0.197;     // the height of where the dart leaves the front of the gun
+double horizontalReleaseShift = 0.14; // the horizontal distance from the front of the gun to the pivot point
 
 namespace pd {
 Tracker::Tracker() : _coordinates() {};
 
-void Tracker::updateCoordinates( //gets called from main
+void Tracker::updateCoordinates( // gets called from main
     std::vector<ProjectileFrame> cam0Frames,
     std::vector<ProjectileFrame> cam1Frames) { // can be run even if there are no frames for one of them
   if ((cam0Frames.size()) != 1 or (cam1Frames.size() != 1)) {
@@ -35,6 +34,8 @@ void Tracker::updateCoordinates( //gets called from main
       _coordinates.clear();
       _vI = Vector3(0, 0, 0);
       _pI = Vector3(0, 0, 0);
+      releaseAngle = 0;
+      releaseTime = 0;
     } // resets if its been too long since last update
   }
 
@@ -49,9 +50,9 @@ void Tracker::updateCoordinates( //gets called from main
   }
 }
 
-Vector3 Tracker::_findMiddle(std::vector<Vector3> values, double allowableDistance) { //gets called in _updateTrendline
+Vector3 Tracker::_findMiddle(std::vector<Vector3> values, double allowableDistance) { // gets called in _updateTrendline
   std::vector<double> xs, ys, zs;
-  for (const Vector3& value : values) {
+  for (const Vector3 &value : values) {
     xs.push_back(value.x);
     ys.push_back(value.y);
     zs.push_back(value.z);
@@ -59,7 +60,7 @@ Vector3 Tracker::_findMiddle(std::vector<Vector3> values, double allowableDistan
   std::sort(xs.begin(), xs.end());
   std::sort(ys.begin(), ys.end());
   std::sort(zs.begin(), zs.end());
-  //REMOVING OUTLIERS
+  // REMOVING OUTLIERS
   size_t quartIndex = values.size() / 4; // not quite if it has an odd size but thats not really important
   size_t medianIndex = values.size() / 2;
   size_t thirdQuartIndex = values.size() - quartIndex;
@@ -74,7 +75,7 @@ Vector3 Tracker::_findMiddle(std::vector<Vector3> values, double allowableDistan
       usable.push_back(values[i]);
     }
   }
-  //AVERAGING
+  // AVERAGING
   Vector3 sums;
   for (int i = 0; i < usable.size(); ++i) {
     sums += usable[i];
@@ -82,7 +83,7 @@ Vector3 Tracker::_findMiddle(std::vector<Vector3> values, double allowableDistan
   return (sums / usable.size());
 }
 
-void Tracker::_updateTrendline() { //gets called when coordinates are updated and the size is greater than 1
+void Tracker::_updateTrendline() { // gets called when coordinates are updated and the size is greater than 1
   std::vector<Vector3> vIs = {};
   std::vector<Vector3> pIs = {};
   for (size_t i = 0; i < _coordinates.size() / 2; ++i) { // works bc its integer division
@@ -96,8 +97,8 @@ void Tracker::_updateTrendline() { //gets called when coordinates are updated an
     double dt = t2 - t1;
 
     double vFy = displacement.y / dt + 4.9 * dt; // the velocity at t1
-    double v0y = vFy + 9.8 * t1; // the velocity at time 0
-    double p0y = c1.y - 0.5 * (v0y + vFy) * t1; // the position at time 0
+    double v0y = vFy + 9.8 * t1;                 // the velocity at time 0
+    double p0y = c1.y - 0.5 * (v0y + vFy) * t1;  // the position at time 0
 
     Vector3 newV(displacement.x / dt, v0y, displacement.z / dt);
     vIs.push_back(newV);
@@ -119,11 +120,13 @@ double Tracker::_domeHeight(double radius) {
   return (-4.9 * dartT * dartT + gv0Y * dartT + dartReleaseHeight); // finding the height using that time
 }
 
-void Tracker::_getIntercept() { //called if coordinates are updated
+void Tracker::_getIntercept() { // called if coordinates are updated
   double t = _coordinates.back().frame * spf;
   Vector3 iteratedPosition = _expectedPosition(t);
-  if (iteratedPosition.y > _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
-    while (iteratedPosition.y > _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
+  if (iteratedPosition.y >
+      _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
+    while (iteratedPosition.y >
+           _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
       t += spf; // this step could be different this just seemed like a reasonable number
       if (iteratedPosition.y < 0) {
         return;
@@ -133,7 +136,6 @@ void Tracker::_getIntercept() { //called if coordinates are updated
     releaseAngle = std::atan(iteratedPosition.x / iteratedPosition.z);
     std::cout << "intercept location: " << _expectedPosition(t) << std::endl;
   }
-
 }
 
 void Tracker::print(double t) {
