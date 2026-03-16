@@ -6,8 +6,8 @@
 int fps = 30;
 double spf = 1.0 / fps;
 double longestAllowableCoordinateGap = 10;
-double velocityOutlierDelta = 10.0;
-double positionOutlierDistance = 5.0;
+double velocityOutlierMultiplier = 1.0;
+double positionOutlierMultiplier = 1.0;
 
 double triggerDelay = 0.333;
 double gunVelocity = 36.576;
@@ -49,7 +49,7 @@ void Tracker::updateCoordinates( //gets called from main
   }
 }
 
-Vector3 Tracker::_findMiddle(std::vector<Vector3> values, double allowableDistance) { //gets called in _updateTrendline
+Vector3 Tracker::_findMiddle(std::vector<Vector3> values, double allowableMultiplier) { //gets called in _updateTrendline
   std::vector<double> xs, ys, zs;
   for (const Vector3& value : values) {
     xs.push_back(value.x);
@@ -66,7 +66,7 @@ Vector3 Tracker::_findMiddle(std::vector<Vector3> values, double allowableDistan
   Vector3 firstQuart(xs[quartIndex], ys[quartIndex], zs[quartIndex]);
   Vector3 median(xs[medianIndex], ys[medianIndex], zs[medianIndex]);
   Vector3 thirdQuart(xs[thirdQuartIndex], ys[thirdQuartIndex], zs[thirdQuartIndex]);
-  Vector3 sD = thirdQuart - firstQuart;
+  Vector3 sD = (thirdQuart - firstQuart) * allowableMultiplier;
   std::vector<Vector3> usable;
   for (int i = 0; i < values.size(); ++i) {
     Vector3 d = median - values[i];
@@ -105,8 +105,8 @@ void Tracker::_updateTrendline() { //gets called when coordinates are updated an
     Vector3 newI(c1.x - newV.x * t1, p0y, c1.z - newV.z * t1);
     pIs.push_back(newI);
   }
-  _vI = _findMiddle(vIs, velocityOutlierDelta);
-  _pI = _findMiddle(pIs, positionOutlierDistance);
+  _vI = _findMiddle(vIs, velocityOutlierMultiplier);
+  _pI = _findMiddle(pIs, positionOutlierMultiplier);
 }
 
 Vector3 Tracker::_expectedPosition(double t) {
@@ -124,7 +124,14 @@ void Tracker::_getIntercept() { //called if coordinates are updated
   Vector3 iteratedPosition = _expectedPosition(t);
   if (iteratedPosition.y > _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
     while (iteratedPosition.y > _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
-      t += spf; // this step could be different this just seemed like a reasonable number
+      t += 0.1; // this step could be different this just seemed like a reasonable number
+      if (iteratedPosition.y < 0) {
+        return;
+      }
+    }
+    t -= 0.1;
+    while (iteratedPosition.y > _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
+      t += 0.01; // this step could be different this just seemed like a reasonable number
       if (iteratedPosition.y < 0) {
         return;
       }
