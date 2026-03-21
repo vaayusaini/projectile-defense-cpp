@@ -126,6 +126,20 @@ int detect() {
       projectile.center.x = (1920 - projectile.center.x);
     }
 
+    if (cam0Projectiles.size() == 2) {
+      pd::ProjectileFrame largestProjectile;
+      int largestArea = 0;
+      for (int i = 0; i < cam0Projectiles.size(); i++) {
+        pd::ProjectileFrame &projectile = cam0Projectiles[i];
+        if (projectile.bbox.area > largestArea) {
+          largestArea = projectile.bbox.area;
+          largestProjectile = projectile;
+        }
+      }
+
+      cam0Projectiles = {largestProjectile};
+    }
+
     pd::drawProjectiles(f0, detector0.lastProjectiles());
     viewer.show("Camera 0", f0);
 
@@ -136,6 +150,20 @@ int detect() {
     for (int i = 0; i < cam1Projectiles.size(); i++) {
       pd::ProjectileFrame &projectile = cam1Projectiles[i];
       projectile.center.x = (1920 - projectile.center.x);
+    }
+
+    if (cam1Projectiles.size() == 2) {
+      pd::ProjectileFrame largestProjectile;
+      int largestArea = 0;
+      for (int i = 0; i < cam1Projectiles.size(); i++) {
+        pd::ProjectileFrame &projectile = cam1Projectiles[i];
+        if (projectile.bbox.area > largestArea) {
+          largestArea = projectile.bbox.area;
+          largestProjectile = projectile;
+        }
+      }
+
+      cam1Projectiles = {largestProjectile};
     }
 
     pd::drawProjectiles(f1, detector1.lastProjectiles());
@@ -150,7 +178,8 @@ int detect() {
     writeAngleToMotor(motor, static_cast<int>(tracker.releaseAngle * 180 / 3.14159 + 90));
     if (((t - tracker.releaseTime) < 0.04) and (tracker.releaseTime != 0)) {
       sleepFor((t - tracker.releaseTime) * 1000);
-      trigger(motor);
+      std::cout << "wanted to fire" << std::endl;
+      // trigger(motor);
     }
   }
 

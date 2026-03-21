@@ -6,12 +6,12 @@
 int fps = 30;
 double spf = 1.0 / fps;
 double longestAllowableCoordinateGap = 10;
-double velocityOutlierMultiplier = 1.0;
-double positionOutlierMultiplier = 1.0;
+double velocityOutlierMultiplier = 5.0;
+double positionOutlierMultiplier = 5.0;
 
 double triggerDelay = 0.333;
 double gunVelocity = 36.576;
-double gunAngle = 0.35; // this is just a placeholder cause we havent tested it
+double gunAngle = 0.147; // this is just a placeholder cause we havent tested it
 double gv0R = gunVelocity * cos(gunAngle);
 double gv0Y = gunVelocity * sin(gunAngle);
 // these two could be eliminated (go to 0) if we decrease the trigger time and make the height at the pivot point y = 0
@@ -36,6 +36,7 @@ void Tracker::updateCoordinates( // gets called from main
       _pI = Vector3(0, 0, 0);
       releaseAngle = 0;
       releaseTime = 0;
+      std::cout << "cleared coordinates" << std::endl;
     } // resets if its been too long since last update
   }
 
@@ -47,10 +48,13 @@ void Tracker::updateCoordinates( // gets called from main
   if (_coordinates.size() > 1) {
     _updateTrendline();
     _getIntercept();
+
+    print(_coordinates.back().frame * spf);
   }
 }
 
-Vector3 Tracker::_findMiddle(std::vector<Vector3> values, double allowableMultiplier) { //gets called in _updateTrendline
+Vector3 Tracker::_findMiddle(std::vector<Vector3> values,
+                             double allowableMultiplier) { // gets called in _updateTrendline
   std::vector<double> xs, ys, zs;
   for (const Vector3 &value : values) {
     xs.push_back(value.x);
@@ -84,6 +88,8 @@ Vector3 Tracker::_findMiddle(std::vector<Vector3> values, double allowableMultip
 }
 
 void Tracker::_updateTrendline() { // gets called when coordinates are updated and the size is greater than 1
+  std::cout << "_updateTrendline()" << std::endl;
+
   std::vector<Vector3> vIs = {};
   std::vector<Vector3> pIs = {};
   for (size_t i = 0; i < _coordinates.size() / 2; ++i) { // works bc its integer division
@@ -106,8 +112,20 @@ void Tracker::_updateTrendline() { // gets called when coordinates are updated a
     Vector3 newI(c1.x - newV.x * t1, p0y, c1.z - newV.z * t1);
     pIs.push_back(newI);
   }
-  _vI = _findMiddle(vIs, velocityOutlierMultiplier);
-  _pI = _findMiddle(pIs, positionOutlierMultiplier);
+  // _vI = _findMiddle(vIs, velocityOutlierMultiplier);
+  // _pI = _findMiddle(pIs, positionOutlierMultiplier);
+
+  Vector3 vsums;
+  for (int i = 0; i < vIs.size(); ++i) {
+    vsums += vIs[i];
+  }
+
+  Vector3 psums;
+  for (int i = 0; i < pIs.size(); ++i) {
+    psums += pIs[i];
+  }
+  _vI = vsums / vIs.size();
+  _pI = psums / pIs.size();
 }
 
 Vector3 Tracker::_expectedPosition(double t) {
@@ -117,29 +135,45 @@ Vector3 Tracker::_expectedPosition(double t) {
 double Tracker::_domeHeight(double radius) {
   double redefinedRadius = radius - horizontalReleaseShift;
   double dartT = radius / gv0R; // time it would take for the dart to get to this radius
-  return (-4.9 * dartT * dartT + gv0Y * dartT + dartReleaseHeight); // finding the height using that time
+  double calculatedDomeHeight(-4.9 * dartT * dartT + gv0Y * dartT +
+                              dartReleaseHeight); // finding the height using that time
+  std::cout << "calculatedDomeHeight: " << calculatedDomeHeight << std::endl;
+  return calculatedDomeHeight;
 }
 
 void Tracker::_getIntercept() { // called if coordinates are updated
   double t = _coordinates.back().frame * spf;
   Vector3 iteratedPosition = _expectedPosition(t);
-  if (iteratedPosition.y > _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
-    while (iteratedPosition.y > _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
-      t += 0.1; // this step could be different this just seemed like a reasonable number
+
+  if (iteratedPosition.y >
+      _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
+    while (iteratedPosition.y >
+           _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
+
       if (iteratedPosition.y < 0) {
+        std::cout << "iterated position less than 0" << std::endl;
         return;
       }
+      t += 0.1; // this step could be different this just seemed like a reasonable number
+      iteratedPosition = _expectedPosition(t);
     }
     t -= 0.1;
-    while (iteratedPosition.y > _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
-      t += 0.01; // this step could be different this just seemed like a reasonable number
+    while (iteratedPosition.y >
+           _domeHeight(std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z))) {
       if (iteratedPosition.y < 0) {
+        std::cout << "iterated position less than 0" << std::endl;
         return;
       }
+
+      t += 0.01; // this step could be different this just seemed like a reasonable number
+      iteratedPosition = _expectedPosition(t);
     }
+
     releaseTime = t - triggerDelay;
     releaseAngle = std::atan(iteratedPosition.x / iteratedPosition.z);
     std::cout << "intercept location: " << _expectedPosition(t) << std::endl;
+  } else {
+    std::cout << "not above dome height already" << std::endl;
   }
 }
 

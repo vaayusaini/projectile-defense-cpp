@@ -1,5 +1,6 @@
 #import "CameraSource.h"
 
+#import "CoreVideo/CVPixelBuffer.h"
 #import <AVFoundation/AVFoundation.h>
 #import <CoreFoundation/CoreFoundation.h>
 #import <CoreMedia/CoreMedia.h>
@@ -7,6 +8,7 @@
 
 #include <atomic>
 #include <cstdio>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -116,9 +118,7 @@ static AVCaptureDevice *deviceForIndex(int idx) {
 
 struct CameraSource::Impl {
   explicit Impl(int idx) : deviceIndex(idx) {}
-  ~Impl() {
-    stop();
-  }
+  ~Impl() { stop(); }
 
   // Single-lifetime setup: start once, stop once, no restart.
   bool start();
@@ -154,7 +154,6 @@ struct CameraSource::Impl {
 
   // Captured by async callbacks to avoid touching `this` after shutdown/destruction.
   std::shared_ptr<std::atomic<bool>> lifetimeAlive = std::make_shared<std::atomic<bool>>(true);
-
 };
 
 bool CameraSource::Impl::start() {
@@ -424,7 +423,12 @@ bool CameraSource::Impl::readLatest(ImageFrame &out) {
   if (!running || !latest.pb)
     return false;
 
+  // size_t width = CVPixelBufferGetWidth(latest.pb);
+  // size_t height = CVPixelBufferGetHeight(latest.pb);
+  // std::cout << "width: " << width << "height: " << height << std::endl;
+
   out = ImageFrame(latest.seq, latest.pb); // retains safely
+
   return true;
 }
 
