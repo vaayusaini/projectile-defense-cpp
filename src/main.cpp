@@ -22,6 +22,7 @@ void writeAngleToMotor(itas109::CSerialPort &motor, int angle) {
 
 void trigger(itas109::CSerialPort &motor) {
   const std::string packet = "f\n";
+
   const int size = static_cast<int>(packet.size());
   motor.writeData(packet.data(), size);
 }
@@ -96,6 +97,8 @@ int detect() {
 
   pd::Tracker tracker;
 
+  bool hasFired = false;
+
   while (true) {
 
     const bool ok0 = cam0.read(f0);
@@ -169,18 +172,37 @@ int detect() {
     pd::drawProjectiles(f1, detector1.lastProjectiles());
     viewer.show("Camera 1", f1);
 
-    std::cout << "frame0: " << lastSeq0 << " frame1: " << lastSeq1 << std::endl;
+    // std::cout << "frame0: " << lastSeq0 << " frame1: " << lastSeq1 << std::endl;
     tracker.updateCoordinates(cam0Projectiles, cam1Projectiles);
 
     double t = lastSeq1 / 30.0;
     // tracker.print(t);
     // NEED TO ADD PORT NAMES FOR THE TWO MOTORS BELOW
-    writeAngleToMotor(motor, static_cast<int>(tracker.releaseAngle * 180 / 3.14159 + 90));
-    if (((t - tracker.releaseTime) < 0.04) and (tracker.releaseTime != 0)) {
-      sleepFor((t - tracker.releaseTime) * 1000);
-      std::cout << "wanted to fire" << std::endl;
-      // trigger(motor);
+    writeAngleToMotor(motor, static_cast<int>(-tracker.releaseAngle * 180 / 3.14159 + 90));
+
+    std::cout << "t: " << t << " releaseTime: " << tracker.releaseTime << std::endl;
+
+    if (!hasFired && tracker.releaseTime > 0) {
+      if (tracker.releaseTime < t) {
+        std::cout << "has fired" << std::endl;
+        trigger(motor);
+        hasFired = true;
+      } else {
+        if (((t - tracker.releaseTime) < 0.04)) {
+          sleepFor((t - tracker.releaseTime) * 1000);
+
+          std::cout << "has fired" << std::endl;
+          trigger(motor);
+          hasFired = true;
+        }
+      }
     }
+
+    // if (((t - tracker.releaseTime) < 0.04) and (tracker.releaseTime != 0)) {
+    //   sleepFor((t - tracker.releaseTime) * 1000);
+    //   std::cout << "wanted to fire" << std::endl;
+    //   // trigger(motor);
+    // }
   }
 
   return 0;

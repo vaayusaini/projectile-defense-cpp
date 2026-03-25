@@ -11,7 +11,7 @@ double positionOutlierMultiplier = 5.0;
 
 double triggerDelay = 0.333;
 double gunVelocity = 36.576;
-double gunAngle = 0.147; // this is just a placeholder cause we havent tested it
+double gunAngle = 0.1; // 0.147; // 2; // this is just a placeholder cause we havent tested it
 double gv0R = gunVelocity * cos(gunAngle);
 double gv0Y = gunVelocity * sin(gunAngle);
 // these two could be eliminated (go to 0) if we decrease the trigger time and make the height at the pivot point y = 0
@@ -137,7 +137,7 @@ double Tracker::_domeHeight(double radius) {
   double dartT = radius / gv0R; // time it would take for the dart to get to this radius
   double calculatedDomeHeight(-4.9 * dartT * dartT + gv0Y * dartT +
                               dartReleaseHeight); // finding the height using that time
-  std::cout << "calculatedDomeHeight: " << calculatedDomeHeight << std::endl;
+  // std::cout << "calculatedDomeHeight: " << calculatedDomeHeight << std::endl;
   return calculatedDomeHeight;
 }
 
