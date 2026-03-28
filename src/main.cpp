@@ -79,7 +79,7 @@ int detect() {
   detectorCfg.closeKernelSize = 3;
   detectorCfg.closeIterations = 1;
   detectorCfg.connectivity = 8;
-  detectorCfg.minArea = 260;
+  detectorCfg.minArea = 200;
   detectorCfg.minAspect = 0.35f;
   detectorCfg.maxAspect = 2.8f;
   detectorCfg.maxProjectiles = 6;
@@ -96,6 +96,8 @@ int detect() {
   std::vector<pd::ProjectileFrame> cam1Projectiles;
 
   pd::Tracker tracker;
+
+  std::vector<double> frameTimes;
 
   bool hasFired = false;
 
@@ -176,6 +178,11 @@ int detect() {
     tracker.updateCoordinates(cam0Projectiles, cam1Projectiles);
 
     double t = lastSeq1 / 30.0;
+    // frameTimes.push_back(t);
+    // while (t - frameTimes[0] > 1) {
+    //   frameTimes.
+    // }
+
     // tracker.print(t);
     // NEED TO ADD PORT NAMES FOR THE TWO MOTORS BELOW
     writeAngleToMotor(motor, static_cast<int>(-tracker.releaseAngle * 180 / 3.14159 + 90));

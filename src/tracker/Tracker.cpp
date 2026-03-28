@@ -11,7 +11,7 @@ double positionOutlierMultiplier = 5.0;
 
 double triggerDelay = 0.333;
 double gunVelocity = 36.576;
-double gunAngle = 0.1; // 0.147; // 2; // this is just a placeholder cause we havent tested it
+double gunAngle = 0.12; // 0.147; // 2; // this is just a placeholder cause we havent tested it
 double gv0R = gunVelocity * cos(gunAngle);
 double gv0Y = gunVelocity * sin(gunAngle);
 // these two could be eliminated (go to 0) if we decrease the trigger time and make the height at the pivot point y = 0
