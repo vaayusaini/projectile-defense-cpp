@@ -94,11 +94,10 @@ static void *const kCaptureQueueKey = (void *)&kCaptureQueueKey;
 static NSArray<AVCaptureDevice *> *discoverVideoDevices() {
   // NOTE: Continuity Camera is critical if you want iPhone devices to appear.
   NSArray<AVCaptureDeviceType> *types = @[
-    AVCaptureDeviceTypeBuiltInWideAngleCamera,
-    AVCaptureDeviceTypeExternal,
-#if defined(AVCaptureDeviceTypeContinuityCamera)
-    AVCaptureDeviceTypeContinuityCamera,
-#endif
+    AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeExternal,
+    // #if defined(AVCaptureDeviceTypeContinuityCamera)
+    //     AVCaptureDeviceTypeContinuityCamera,
+    // #endif
   ];
 
   AVCaptureDeviceDiscoverySession *discovery =
