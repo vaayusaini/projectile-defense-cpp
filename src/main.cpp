@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <vector>
 
+const double BULLET_DRIFT = 3.34; // In degrees
+
 // VAAYU YOU NEED TO FIX THIS I DONT THINK ITLL WORK
 void writeAngleToMotor(itas109::CSerialPort &motor, int angle) {
   const std::string packet = std::to_string(angle) + "\n";
@@ -66,8 +68,8 @@ int detect() {
 
   sleepFor(100);
 
-  pd::CameraSource cam0(0);
-  pd::CameraSource cam1(1);
+  pd::CameraSource cam0(1);
+  pd::CameraSource cam1(2);
   pd::ImageViewer viewer;
 
   pd::DetectorConfig detectorCfg;
@@ -185,7 +187,7 @@ int detect() {
 
     // tracker.print(t);
     // NEED TO ADD PORT NAMES FOR THE TWO MOTORS BELOW
-    writeAngleToMotor(motor, static_cast<int>(-tracker.releaseAngle * 180 / 3.14159 + 90));
+    writeAngleToMotor(motor, static_cast<int>(-tracker.releaseAngle * 180 / 3.14159 + 90 - BULLET_DRIFT));
 
     std::cout << "t: " << t << " releaseTime: " << tracker.releaseTime << std::endl;
 
