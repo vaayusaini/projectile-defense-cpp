@@ -3,15 +3,15 @@
 #include <cmath>
 #include <iostream>
 
-int fps = 30;
+int fps = 60;
 double spf = 1.0 / fps;
 double longestAllowableCoordinateGap = 10;
 double velocityOutlierMultiplier = 5.0;
 double positionOutlierMultiplier = 5.0;
 
-double triggerDelay = 0.333 + 26.0 / 30.0;
-double gunVelocity = 36.576;
-double gunAngle = 0.12; // 0.147; // 2; // this is just a placeholder cause we havent tested it
+double triggerDelay = 0.333; // + 26.0 / 30.0;
+double gunVelocity = 40;     // 36.576;
+double gunAngle = 0.188;     // 0.147; // 2; // this is just a placeholder cause we havent tested it
 double gv0R = gunVelocity * cos(gunAngle);
 double gv0Y = gunVelocity * sin(gunAngle);
 // these two could be eliminated (go to 0) if we decrease the trigger time and make the height at the pivot point y = 0
@@ -45,7 +45,7 @@ void Tracker::updateCoordinates( // gets called from main
   Vector3 coordinates = findCoordinates(cam1Center.x, cam1Center.y, cam2Center.x, cam2Center.y);
   TrackerFrame newFrame = TrackerFrame(cam0Frames[0].frame, coordinates);
   _coordinates.push_back(newFrame);
-  if (_coordinates.size() > 3) {
+  if (_coordinates.size() > 7) {
     _updateTrendline();
     _getIntercept();
 

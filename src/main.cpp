@@ -66,8 +66,8 @@ int detect() {
 
   sleepFor(100);
 
-  pd::CameraSource cam0(1);
-  pd::CameraSource cam1(2);
+  pd::CameraSource cam0(0);
+  pd::CameraSource cam1(1);
   pd::ImageViewer viewer;
 
   pd::DetectorConfig detectorCfg;
@@ -126,10 +126,10 @@ int detect() {
     detector0.process(f0);
     cam0Projectiles = detector0.lastProjectiles();
 
-    for (int i = 0; i < cam0Projectiles.size(); i++) {
-      pd::ProjectileFrame &projectile = cam0Projectiles[i];
-      projectile.center.x = (1920 - projectile.center.x);
-    }
+    // for (int i = 0; i < cam0Projectiles.size(); i++) {
+    //   pd::ProjectileFrame &projectile = cam0Projectiles[i];
+    //   projectile.center.x = (1920 - projectile.center.x);
+    // }
 
     if (cam0Projectiles.size() == 2) {
       pd::ProjectileFrame largestProjectile;
@@ -152,10 +152,10 @@ int detect() {
     detector1.process(f1);
     cam1Projectiles = detector1.lastProjectiles();
 
-    for (int i = 0; i < cam1Projectiles.size(); i++) {
-      pd::ProjectileFrame &projectile = cam1Projectiles[i];
-      projectile.center.x = (1920 - projectile.center.x);
-    }
+    // for (int i = 0; i < cam1Projectiles.size(); i++) {
+    //   pd::ProjectileFrame &projectile = cam1Projectiles[i];
+    //   projectile.center.x = (1920 - projectile.center.x);
+    // }
 
     if (cam1Projectiles.size() == 2) {
       pd::ProjectileFrame largestProjectile;
@@ -177,7 +177,7 @@ int detect() {
     // std::cout << "frame0: " << lastSeq0 << " frame1: " << lastSeq1 << std::endl;
     tracker.updateCoordinates(cam0Projectiles, cam1Projectiles);
 
-    double t = lastSeq1 / 30.0;
+    double t = lastSeq1 / 60.0;
     // frameTimes.push_back(t);
     // while (t - frameTimes[0] > 1) {
     //   frameTimes.

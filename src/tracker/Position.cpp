@@ -5,11 +5,11 @@
 namespace pd {
 // CONSTANTS
 // Camera Settings
-const double camAngleX = 1.047;
-const double cam0TiltX = 0.5; // 0.6435; // 0.15;
-const double cam1TiltX = -0.195;
-const double camAngleY = 0.523;  // 0.628;  // 0.547;  // 0.628319;
-const int camResolutionX = 1920; // make sure these match vaayu's imscale
+const double camAngleX = 1.12785228422; // 1.3788;  // 1.047;
+const double cam0TiltX = 0;             // 0.5;    // 0.6435; // 0.15;
+const double cam1TiltX = 0;             // -0.195;
+const double camAngleY = 0.63441690987; // 0.77558; // 0.523;  // 0.628;  // 0.547;  // 0.628319;
+const int camResolutionX = 1920;        // make sure these match vaayu's imscale
 const int camResolutionY = 1080;
 
 // Camera Positioning relative to 0,0
