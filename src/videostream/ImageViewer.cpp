@@ -4,7 +4,6 @@
 #include <CoreVideo/CoreVideo.h>
 
 #include <cctype>
-#include <iostream>
 #include <mutex>
 #include <string>
 #include <unordered_map>
