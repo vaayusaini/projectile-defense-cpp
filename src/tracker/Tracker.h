@@ -29,7 +29,7 @@ public:
   void print(double t);
   double releaseAngle = 0;
   double releaseTime = 0;
-  void updateCoordinates(std::vector<ProjectileFrame> cam1Frames, std::vector<ProjectileFrame> cam2Frames);
+  void updateCoordinates(std::vector<ProjectileFrame> cam0Frames, std::vector<ProjectileFrame> cam1Frames);
 };
 
 } // namespace pd

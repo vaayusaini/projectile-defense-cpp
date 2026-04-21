@@ -68,8 +68,8 @@ int detect() {
 
   sleepFor(100);
 
-  pd::CameraSource cam0(1);
-  pd::CameraSource cam1(2);
+  pd::CameraSource cam0(0); // 1
+  pd::CameraSource cam1(1); // 2
   pd::ImageViewer viewer;
 
   pd::DetectorConfig detectorCfg;
@@ -153,6 +153,10 @@ int detect() {
     lastSeq1 = f1.frame;
     detector1.process(f1);
     cam1Projectiles = detector1.lastProjectiles();
+
+    if (cam1Projectiles.size() > 1) {
+      std::cout << "lastSeq1: " << lastSeq1 << " cam1Projectiles[0].frame: " << cam1Projectiles[0].frame << std::endl;
+    }
 
     // for (int i = 0; i < cam1Projectiles.size(); i++) {
     //   pd::ProjectileFrame &projectile = cam1Projectiles[i];
