@@ -9,9 +9,9 @@ double longestAllowableCoordinateGap = 10;
 double velocityOutlierMultiplier = 5.0;
 double positionOutlierMultiplier = 5.0;
 
-double triggerDelay = 0.333; // + 26.0 / 30.0;
-double gunVelocity = 40;     // 36.576;
-double gunAngle = 0.188;     // 0.147; // 2; // this is just a placeholder cause we havent tested it
+double triggerDelay = 0.3; // 0.333;
+double gunVelocity = 40;   // 36.576;
+double gunAngle = 0.188;   // 0.147; // 2; // this is just a placeholder cause we havent tested it
 double gv0R = gunVelocity * cos(gunAngle);
 double gv0Y = gunVelocity * sin(gunAngle);
 // these two could be eliminated (go to 0) if we decrease the trigger time and make the height at the pivot point y = 0
@@ -28,7 +28,7 @@ void Tracker::updateCoordinates( // gets called from main
     return;
   }
 
-  int currentFrame = cam0Frames[0].frame;
+  int currentFrame = cam1Frames[0].frame;
   if (_coordinates.size() > 0) { // checks that we can validly run the next if statement
     if ((currentFrame - _coordinates.back().frame) > longestAllowableCoordinateGap) {
       _coordinates.clear();
@@ -43,7 +43,7 @@ void Tracker::updateCoordinates( // gets called from main
   Pixel cam1Center = cam0Frames[0].center;
   Pixel cam2Center = cam1Frames[0].center;
   Vector3 coordinates = findCoordinates(cam1Center.x, cam1Center.y, cam2Center.x, cam2Center.y);
-  TrackerFrame newFrame = TrackerFrame(cam0Frames[0].frame, coordinates);
+  TrackerFrame newFrame = TrackerFrame(currentFrame, coordinates);
   _coordinates.push_back(newFrame);
   if (_coordinates.size() > 7) {
     _updateTrendline();
@@ -169,7 +169,10 @@ void Tracker::_getIntercept() { // called if coordinates are updated
       iteratedPosition = _expectedPosition(t);
     }
 
-    releaseTime = t - triggerDelay;
+    // double travelTime = std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z)
+    // / (gunVelocity * std::cos(gunAngle));
+
+    releaseTime = t - triggerDelay; // - travelTime;
     releaseAngle = std::atan(iteratedPosition.x / iteratedPosition.z);
     std::cout << "intercept location: " << _expectedPosition(t) << std::endl;
   } else {
