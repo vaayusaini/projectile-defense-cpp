@@ -59,16 +59,16 @@ itas109::CSerialPort getMotor() {
 
 int detect() {
 
-  itas109::CSerialPort motor = getMotor();
+  // itas109::CSerialPort motor = getMotor();
 
-  if (!motor.isOpen()) {
-    std::cout << "unable to connect to motor ";
-    return -1;
-  }
+  // if (!motor.isOpen()) {
+  //   std::cout << "unable to connect to motor ";
+  //   return -1;
+  // }
 
   sleepFor(100);
 
-  pd::CameraSource cam0(0); // 1
+  pd::CameraSource cam0(2); // 1
   pd::CameraSource cam1(1); // 2
   pd::ImageViewer viewer;
 
@@ -93,9 +93,6 @@ int detect() {
   pd::ImageFrame f1;
   uint64_t lastSeq0 = 0;
   uint64_t lastSeq1 = 0;
-
-  std::vector<pd::ProjectileFrame> cam0Projectiles;
-  std::vector<pd::ProjectileFrame> cam1Projectiles;
 
   pd::Tracker tracker;
 
@@ -123,6 +120,9 @@ int detect() {
 
       continue;
     }
+
+    std::vector<pd::ProjectileFrame> cam0Projectiles;
+    std::vector<pd::ProjectileFrame> cam1Projectiles;
 
     lastSeq0 = f0.frame;
     detector0.process(f0);
@@ -154,7 +154,7 @@ int detect() {
     detector1.process(f1);
     cam1Projectiles = detector1.lastProjectiles();
 
-    if (cam1Projectiles.size() > 1) {
+    if (cam1Projectiles.size() >= 1) {
       std::cout << "lastSeq1: " << lastSeq1 << " cam1Projectiles[0].frame: " << cam1Projectiles[0].frame << std::endl;
     }
 
@@ -191,30 +191,30 @@ int detect() {
 
     // tracker.print(t);
     // NEED TO ADD PORT NAMES FOR THE TWO MOTORS BELOW
-    writeAngleToMotor(motor, static_cast<int>(-tracker.releaseAngle * 180 / 3.14159 + 90 - BULLET_DRIFT));
+    // writeAngleToMotor(motor, static_cast<int>(-tracker.releaseAngle * 180 / 3.14159 + 90 - BULLET_DRIFT));
 
     std::cout << "t: " << t << " releaseTime: " << tracker.releaseTime << std::endl;
 
-    if (!hasFired && tracker.releaseTime > 0) {
-      if (tracker.releaseTime < t) {
-        std::cout << "has fired" << std::endl;
-        trigger(motor);
-        hasFired = true;
-      } else {
-        if (((t - tracker.releaseTime) < 0.04)) {
-          sleepFor((t - tracker.releaseTime) * 1000);
+    // if (!hasFired && tracker.releaseTime > 0) {
+    //   if (tracker.releaseTime < t) {
+    //     std::cout << "has fired" << std::endl;
+    //     // trigger(motor);
+    //     hasFired = true;
+    //   } else {
+    //     if (((t - tracker.releaseTime) < 0.04)) {
+    //       sleepFor((t - tracker.releaseTime) * 1000);
 
-          std::cout << "has fired" << std::endl;
-          trigger(motor);
-          hasFired = true;
-        }
-      }
-    }
+    //       std::cout << "has fired" << std::endl;
+    //       trigger(motor);
+    //       hasFired = true;
+    //     }
+    //   }
+    // }
 
     // if (((t - tracker.releaseTime) < 0.04) and (tracker.releaseTime != 0)) {
     //   sleepFor((t - tracker.releaseTime) * 1000);
     //   std::cout << "wanted to fire" << std::endl;
-    //   // trigger(motor);
+    //   trigger(motor);
     // }
   }
 

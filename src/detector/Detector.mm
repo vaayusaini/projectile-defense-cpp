@@ -276,17 +276,11 @@ constexpr float kMog2VarMax = 75.0f;
 constexpr float kMog2ComplexityReduction = 0.05f;
 constexpr float kMog2ShadowTau = 0.5f;
 
-inline int clampInt(int v, int lo, int hi) {
-  return std::max(lo, std::min(v, hi));
-}
+inline int clampInt(int v, int lo, int hi) { return std::max(lo, std::min(v, hi)); }
 
-inline float clampFloat(float v, float lo, float hi) {
-  return std::max(lo, std::min(v, hi));
-}
+inline float clampFloat(float v, float lo, float hi) { return std::max(lo, std::min(v, hi)); }
 
-inline MTLSize makeThreadgroupSize() {
-  return MTLSizeMake(16, 16, 1);
-}
+inline MTLSize makeThreadgroupSize() { return MTLSizeMake(16, 16, 1); }
 
 inline MTLSize makeThreadgroupCount(int width, int height, MTLSize tgSize) {
   const NSUInteger gx = (static_cast<NSUInteger>(width) + tgSize.width - 1) / tgSize.width;
@@ -473,7 +467,8 @@ struct Detector::Impl {
     if (!mog2PSO || !dilatePSO || !erodePSO)
       return;
 
-    const CVReturn cacheResult = CVMetalTextureCacheCreate(kCFAllocatorDefault, nullptr, device, nullptr, &textureCache);
+    const CVReturn cacheResult =
+        CVMetalTextureCacheCreate(kCFAllocatorDefault, nullptr, device, nullptr, &textureCache);
     if (cacheResult != kCVReturnSuccess)
       textureCache = nullptr;
   }
@@ -529,8 +524,9 @@ struct Detector::Impl {
     scaledHeight = std::max(1, static_cast<int>(std::lround(frameHeight * config.imscale)));
 
     CVMetalTextureRef cvInputTex = nullptr;
-    const CVReturn cvResult = CVMetalTextureCacheCreateTextureFromImage(
-        kCFAllocatorDefault, textureCache, pb, nullptr, MTLPixelFormatBGRA8Unorm, frameWidth, frameHeight, 0, &cvInputTex);
+    const CVReturn cvResult =
+        CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, textureCache, pb, nullptr,
+                                                  MTLPixelFormatBGRA8Unorm, frameWidth, frameHeight, 0, &cvInputTex);
     if (cvResult != kCVReturnSuccess || !cvInputTex)
       return {};
 
@@ -611,13 +607,16 @@ struct Detector::Impl {
     cpuMask.resize(required);
     const MTLRegion region =
         MTLRegionMake2D(0, 0, static_cast<NSUInteger>(scaledWidth), static_cast<NSUInteger>(scaledHeight));
-    [maskTexture getBytes:cpuMask.data() bytesPerRow:static_cast<NSUInteger>(scaledWidth) fromRegion:region mipmapLevel:0];
+    [maskTexture getBytes:cpuMask.data()
+              bytesPerRow:static_cast<NSUInteger>(scaledWidth)
+               fromRegion:region
+              mipmapLevel:0];
 
-    extractProjectiles();
+    extractProjectiles(frame.frame);
 
     std::vector<Pixel> out;
     out.reserve(last.size());
-    for (const ProjectileFrame &p : last)
+    for (ProjectileFrame &p : last)
       out.push_back(p.center);
     return out;
   }
@@ -686,7 +685,7 @@ private:
     std::memset([modesUsedBuffer contents], 0, pixelCount * sizeof(uint8_t));
   }
 
-  void extractProjectiles() {
+  void extractProjectiles(uint64_t providedFrameCounter) {
     last.clear();
     if (cpuMask.empty() || scaledWidth <= 0 || scaledHeight <= 0)
       return;
@@ -698,8 +697,7 @@ private:
 
     const bool use8 = (config.connectivity == 8);
     constexpr int k4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-    constexpr int k8[8][2] = {{1, 0},  {-1, 0}, {0, 1},  {0, -1},
-                              {1, 1},  {-1, -1}, {1, -1}, {-1, 1}};
+    constexpr int k8[8][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, -1}, {1, -1}, {-1, 1}};
 
     std::vector<ProjectileFrame> temp;
     temp.reserve(64);
@@ -775,14 +773,13 @@ private:
         p.bbox.area = area;
         p.center.x = p.bbox.topLeft.x + p.bbox.dimensions.x / 2;
         p.center.y = p.bbox.topLeft.y + p.bbox.dimensions.y / 2;
-        p.frame = frameCounter;
+        p.frame = providedFrameCounter;
         temp.push_back(p);
       }
     }
 
-    std::sort(temp.begin(), temp.end(), [](const ProjectileFrame &a, const ProjectileFrame &b) {
-      return a.bbox.area > b.bbox.area;
-    });
+    std::sort(temp.begin(), temp.end(),
+              [](const ProjectileFrame &a, const ProjectileFrame &b) { return a.bbox.area > b.bbox.area; });
     if (static_cast<int>(temp.size()) > config.maxProjectiles)
       temp.resize(config.maxProjectiles);
 
@@ -865,9 +862,7 @@ void drawPoints(ImageFrame &frame, const std::vector<Pixel> &points, int radius)
     drawPointIntoBGRA(locked.base(), locked.width(), locked.height(), locked.stride(), p, radius);
 }
 
-void drawProjectiles(ImageFrame &frame,
-                     const std::vector<ProjectileFrame> &projectiles,
-                     int boxThickness,
+void drawProjectiles(ImageFrame &frame, const std::vector<ProjectileFrame> &projectiles, int boxThickness,
                      int centerRadius) {
   if (projectiles.empty())
     return;

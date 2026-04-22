@@ -143,6 +143,7 @@ double Tracker::_domeHeight(double radius) {
 
 void Tracker::_getIntercept() { // called if coordinates are updated
   double t = _coordinates.back().frame * spf;
+  std::cout << "starting from time: " << t << std::endl;
   Vector3 iteratedPosition = _expectedPosition(t);
 
   if (iteratedPosition.y >
@@ -174,6 +175,7 @@ void Tracker::_getIntercept() { // called if coordinates are updated
 
     releaseTime = t - triggerDelay; // - travelTime;
     releaseAngle = std::atan(iteratedPosition.x / iteratedPosition.z);
+    std::cout << "intercept time: " << t << std::endl;
     std::cout << "intercept location: " << _expectedPosition(t) << std::endl;
   } else {
     std::cout << "not above dome height already" << std::endl;
