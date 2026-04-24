@@ -13,6 +13,7 @@
 #include <vector>
 
 const double BULLET_DRIFT = 3.34; // In degrees
+const bool USE_SHOW = true;
 
 // VAAYU YOU NEED TO FIX THIS I DONT THINK ITLL WORK
 void writeAngleToMotor(itas109::CSerialPort &motor, int angle) {
@@ -59,17 +60,17 @@ itas109::CSerialPort getMotor() {
 
 int detect() {
 
-  // itas109::CSerialPort motor = getMotor();
+  itas109::CSerialPort motor = getMotor();
 
-  // if (!motor.isOpen()) {
-  //   std::cout << "unable to connect to motor ";
-  //   return -1;
-  // }
+  if (!motor.isOpen()) {
+    std::cout << "unable to connect to motor ";
+    return -1;
+  }
 
   sleepFor(100);
 
-  pd::CameraSource cam0(2); // 1
-  pd::CameraSource cam1(1); // 2
+  pd::CameraSource cam0(1); // 1
+  pd::CameraSource cam1(2); // 2
   pd::ImageViewer viewer;
 
   pd::DetectorConfig detectorCfg;
@@ -148,15 +149,14 @@ int detect() {
     }
 
     pd::drawProjectiles(f0, detector0.lastProjectiles());
-    viewer.show("Camera 0", f0);
+    if (USE_SHOW) {
+      viewer.show("Camera 0", f0);
+    }
+    
 
     lastSeq1 = f1.frame;
     detector1.process(f1);
     cam1Projectiles = detector1.lastProjectiles();
-
-    if (cam1Projectiles.size() >= 1) {
-      std::cout << "lastSeq1: " << lastSeq1 << " cam1Projectiles[0].frame: " << cam1Projectiles[0].frame << std::endl;
-    }
 
     // for (int i = 0; i < cam1Projectiles.size(); i++) {
     //   pd::ProjectileFrame &projectile = cam1Projectiles[i];
@@ -178,7 +178,9 @@ int detect() {
     }
 
     pd::drawProjectiles(f1, detector1.lastProjectiles());
-    viewer.show("Camera 1", f1);
+    if (USE_SHOW) {
+      viewer.show("Camera 1", f1);
+    }
 
     // std::cout << "frame0: " << lastSeq0 << " frame1: " << lastSeq1 << std::endl;
     tracker.updateCoordinates(cam0Projectiles, cam1Projectiles);
@@ -191,25 +193,28 @@ int detect() {
 
     // tracker.print(t);
     // NEED TO ADD PORT NAMES FOR THE TWO MOTORS BELOW
-    // writeAngleToMotor(motor, static_cast<int>(-tracker.releaseAngle * 180 / 3.14159 + 90 - BULLET_DRIFT));
+    writeAngleToMotor(motor, static_cast<int>(-tracker.releaseAngle * 180 / 3.14159 + 90 - BULLET_DRIFT));
 
-    std::cout << "t: " << t << " releaseTime: " << tracker.releaseTime << std::endl;
+    if (tracker.releaseTime != 0) {
+      std::cout << "t: " << t << " releaseTime: " << tracker.releaseTime << std::endl;
+    }
+    
 
-    // if (!hasFired && tracker.releaseTime > 0) {
-    //   if (tracker.releaseTime < t) {
-    //     std::cout << "has fired" << std::endl;
-    //     // trigger(motor);
-    //     hasFired = true;
-    //   } else {
-    //     if (((t - tracker.releaseTime) < 0.04)) {
-    //       sleepFor((t - tracker.releaseTime) * 1000);
+    if (!hasFired && tracker.releaseTime > 0) {
+      if (tracker.releaseTime < t) {
+        std::cout << "has fired" << std::endl;
+        // trigger(motor);
+        hasFired = true;
+      } else {
+        if (((t - tracker.releaseTime) < 0.04)) {
+          sleepFor((t - tracker.releaseTime) * 1000);
 
-    //       std::cout << "has fired" << std::endl;
-    //       trigger(motor);
-    //       hasFired = true;
-    //     }
-    //   }
-    // }
+          std::cout << "has fired" << std::endl;
+          trigger(motor);
+          hasFired = true;
+        }
+      }
+    }
 
     // if (((t - tracker.releaseTime) < 0.04) and (tracker.releaseTime != 0)) {
     //   sleepFor((t - tracker.releaseTime) * 1000);

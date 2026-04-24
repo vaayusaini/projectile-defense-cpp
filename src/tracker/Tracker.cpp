@@ -9,9 +9,9 @@ double longestAllowableCoordinateGap = 10;
 double velocityOutlierMultiplier = 5.0;
 double positionOutlierMultiplier = 5.0;
 
-double triggerDelay = 0.3; // 0.333;
-double gunVelocity = 40;   // 36.576;
-double gunAngle = 0.188;   // 0.147; // 2; // this is just a placeholder cause we havent tested it
+double triggerDelay = 0.1; //0.3; // 0.333;
+double gunVelocity = 42;   // 36.576;
+double gunAngle = 0.1625; //0.188;   // 0.147; // 2; // this is just a placeholder cause we havent tested it
 double gv0R = gunVelocity * cos(gunAngle);
 double gv0Y = gunVelocity * sin(gunAngle);
 // these two could be eliminated (go to 0) if we decrease the trigger time and make the height at the pivot point y = 0
@@ -45,7 +45,7 @@ void Tracker::updateCoordinates( // gets called from main
   Vector3 coordinates = findCoordinates(cam1Center.x, cam1Center.y, cam2Center.x, cam2Center.y);
   TrackerFrame newFrame = TrackerFrame(currentFrame, coordinates);
   _coordinates.push_back(newFrame);
-  if (_coordinates.size() > 7) {
+  if (_coordinates.size() > 9) {
     _updateTrendline();
     _getIntercept();
 
@@ -170,10 +170,9 @@ void Tracker::_getIntercept() { // called if coordinates are updated
       iteratedPosition = _expectedPosition(t);
     }
 
-    // double travelTime = std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z)
-    // / (gunVelocity * std::cos(gunAngle));
+    double travelTime = std::sqrt(iteratedPosition.x * iteratedPosition.x + iteratedPosition.z * iteratedPosition.z) / (gunVelocity * std::cos(gunAngle));
 
-    releaseTime = t - triggerDelay; // - travelTime;
+    releaseTime = t - triggerDelay + 1;
     releaseAngle = std::atan(iteratedPosition.x / iteratedPosition.z);
     std::cout << "intercept time: " << t << std::endl;
     std::cout << "intercept location: " << _expectedPosition(t) << std::endl;
